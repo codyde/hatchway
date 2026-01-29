@@ -78,6 +78,14 @@ export const TAG_DEFINITIONS: TagDefinition[] = [
         logo: '/openai.png',
         provider: 'openai-codex',
         model: 'openai/gpt-5.2-codex'
+      },
+      {
+        value: 'factory-droid',
+        label: 'Factory Droid',
+        description: 'Factory Droid SDK - Uses droid CLI for builds',
+        logo: '/factory.png',
+        provider: 'factory-droid',
+        model: undefined
       }
     ]
   },
