@@ -49,10 +49,10 @@
     "cli": "node --import ./dist/instrument.js dist/cli/index.js"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.12",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.29",
     "droid-sdk": "file:/Users/codydearkland/droid-sdk",
     "@clack/prompts": "^0.11.0",
-    "@openai/codex-sdk": "^0.53.0",
+    "@openai/codex-sdk": "^0.93.0",
     "@sentry/node": "^10.37.0",
     "@openbuilder/agent-core": "workspace:*",
     "@openbuilder/opencode-client": "workspace:*",

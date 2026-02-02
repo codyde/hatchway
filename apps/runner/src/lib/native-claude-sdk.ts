@@ -2,7 +2,7 @@
  * Native Claude Agent SDK Integration
  * 
  * This is the default SDK integration for AI-powered builds.
- * For multi-provider support, set USE_OPENCODE_SDK=1 to use opencode-sdk.ts instead.
+ * For multi-provider support, set ENABLE_OPENCODE_SDK=true to use opencode-sdk.ts instead.
  *
  * This module provides direct integration with the official @anthropic-ai/claude-agent-sdk
  * without going through the AI SDK or community provider layers.

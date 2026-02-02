@@ -685,7 +685,7 @@ function createCodexQuery(): BuildQueryFn {
 /**
  * SDK Feature Flags (environment variables)
  * 
- * - USE_OPENCODE_SDK: Imported from opencode-sdk.ts, enables OpenCode multi-provider routing
+ * - ENABLE_OPENCODE_SDK: Imported from opencode-sdk.ts, enables OpenCode multi-provider routing
  * - ENABLE_FACTORY_SDK: Enables Factory Droid SDK for builds
  * 
  * By default (no flags set), only Agent SDK (Claude + Codex) is available.
