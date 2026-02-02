@@ -8,7 +8,7 @@ import { config as loadEnv } from "dotenv";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createNativeClaudeQuery } from "./lib/native-claude-sdk.js";
-import { createOpenCodeQuery, USE_OPENCODE_SDK } from "./lib/opencode-sdk.js";
+import { createOpenCodeQuery, ENABLE_OPENCODE_SDK } from "./lib/opencode-sdk.js";
 import { createDroidQuery } from "./lib/droid-sdk-query.js";
 import WebSocket from "ws";
 import os from "node:os";
@@ -698,7 +698,7 @@ function createBuildQuery(
   abortController?: AbortController
 ): BuildQueryFn {
   // When OpenCode SDK is enabled, route ALL requests through it (including Codex)
-  if (USE_OPENCODE_SDK) {
+  if (ENABLE_OPENCODE_SDK) {
     // Map openai-codex agent to the correct OpenCode model
     const normalizedModel = agent === "openai-codex"
       ? "openai/gpt-5.2-codex"
