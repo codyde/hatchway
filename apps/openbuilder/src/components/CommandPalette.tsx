@@ -7,6 +7,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
 import { useProjects } from '@/contexts/ProjectContext';
 import { useRunner } from '@/contexts/RunnerContext';
+// SDK mode selection removed - now controlled via environment variables
 import { useToast } from '@/components/ui/toast';
 import {
   Search,
@@ -54,6 +55,7 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
   const router = useRouter();
   const { projects, refetch } = useProjects();
   const { selectedRunnerId } = useRunner();
+  // SDK mode removed - now controlled via environment variables
   const { addToast } = useToast();
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
@@ -275,6 +277,11 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
       action: { type: 'navigate', path: '/' },
       group: 'Actions',
     });
+
+    // SDK Mode selection removed - now controlled via environment variables:
+    // - ENABLE_OPENCODE_SDK=true enables OpenCode SDK
+    // - ENABLE_FACTORY_SDK=true enables Factory Droid SDK
+    // Users select models via the tag dropdown in the chat input
 
     // Exit bulk mode if active (only show if in bulk mode)
     if (bulkMode) {

@@ -28,6 +28,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { useToast } from "@/components/ui/toast";
 import { CommandPaletteProvider } from "@/components/CommandPaletteProvider";
+import { SDKModeProvider } from "@/contexts/SDKModeContext";
 import { useProjects, type Project } from "@/contexts/ProjectContext";
 import { useRunner } from "@/contexts/RunnerContext";
 import { useAgent } from "@/contexts/AgentContext";
@@ -2661,6 +2662,7 @@ function HomeContent() {
   };
 
   return (
+    <SDKModeProvider>
     <CommandPaletteProvider
       onRenameProject={setRenamingProject}
       onDeleteProject={setDeletingProject}
@@ -3461,6 +3463,7 @@ function HomeContent() {
       </SidebarInset>
     </SidebarProvider>
     </CommandPaletteProvider>
+    </SDKModeProvider>
   );
 }
 

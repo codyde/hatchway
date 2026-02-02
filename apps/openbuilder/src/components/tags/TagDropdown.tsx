@@ -10,6 +10,8 @@ import { ColorPickerTag } from './ColorPickerTag';
 import { BrandThemePreview } from './BrandThemePreview';
 import { FrameworkPreview } from './FrameworkPreview';
 import { useAuth } from '@/contexts/AuthContext';
+import { SDK_ENABLED } from '@/contexts/SDKModeContext';
+import type { SDKMode } from '@/contexts/SDKModeContext';
 
 interface TagDropdownProps {
   open: boolean;
@@ -38,7 +40,7 @@ export function TagDropdown({
 }: TagDropdownProps) {
   const { isLocalMode } = useAuth();
   
-  // Get tag definitions with runner options injected
+  // Get tag definitions with runner options injected and model options filtered by enabled SDKs
   // In local mode, hide the runner tag since it's fixed to 'local'
   // MUST be defined before getInitialView() to avoid TDZ error
   const getTagDefinitions = () => {
@@ -47,6 +49,19 @@ export function TagDropdown({
       .map(def => {
         if (def.key === 'runner') {
           return { ...def, options: runnerOptions };
+        }
+        // Filter model options based on enabled SDKs (environment variables)
+        // Only show models from SDKs that are enabled via ENABLE_*_SDK env vars
+        if (def.key === 'model' && def.options) {
+          const filteredOptions = def.options.filter(option => {
+            // Get the SDK this model belongs to (from tag option metadata)
+            const sdk = option.sdk as SDKMode | undefined;
+            // If no SDK specified, assume 'agent' (default SDK, always enabled)
+            if (!sdk) return SDK_ENABLED.agent;
+            // Only include if the SDK is enabled
+            return SDK_ENABLED[sdk];
+          });
+          return { ...def, options: filteredOptions };
         }
         return def;
       });

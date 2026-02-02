@@ -682,6 +682,16 @@ function createCodexQuery(): BuildQueryFn {
   };
 }
 
+/**
+ * SDK Feature Flags (environment variables)
+ * 
+ * - USE_OPENCODE_SDK: Imported from opencode-sdk.ts, enables OpenCode multi-provider routing
+ * - ENABLE_FACTORY_SDK: Enables Factory Droid SDK for builds
+ * 
+ * By default (no flags set), only Agent SDK (Claude + Codex) is available.
+ */
+const ENABLE_FACTORY_SDK = process.env.ENABLE_FACTORY_SDK === 'true';
+
 function createBuildQuery(
   agent: AgentId,
   modelId?: ClaudeModelId | OpenCodeModelId,
@@ -704,8 +714,13 @@ function createBuildQuery(
     return createCodexQuery();
   }
 
-  // Factory Droid SDK - uses the droid CLI for builds
+  // Factory Droid SDK - uses the droid CLI for builds (only if enabled)
   if (agent === "factory-droid") {
+    if (!ENABLE_FACTORY_SDK) {
+      console.warn('[runner] ⚠️ Factory Droid requested but ENABLE_FACTORY_SDK is not set');
+      console.warn('[runner] ⚠️ Falling back to native Claude Agent SDK');
+      return createNativeClaudeQuery(DEFAULT_CLAUDE_MODEL_ID, abortController);
+    }
     console.log('[runner] 🔄 Using Factory Droid SDK');
     return createDroidQuery(modelId as string);
   }
