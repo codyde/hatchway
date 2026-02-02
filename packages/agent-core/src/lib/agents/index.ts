@@ -13,13 +13,19 @@ async function ensureRegistry() {
   }
 
   // Dynamic imports prevent webpack from bundling server-only code
-  const [{ default: claudeStrategy }, { default: codexStrategy }] = await Promise.all([
+  const [
+    { default: claudeStrategy },
+    { default: codexStrategy },
+    { default: droidStrategy }
+  ] = await Promise.all([
     import('./claude-strategy'),
-    import('./codex-strategy')
+    import('./codex-strategy'),
+    import('./droid-strategy')
   ]);
 
   registerAgentStrategy('claude-code', claudeStrategy);
   registerAgentStrategy('openai-codex', codexStrategy);
+  registerAgentStrategy('factory-droid', droidStrategy);
   initialized = true;
 }
 

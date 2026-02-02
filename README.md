@@ -97,7 +97,7 @@ curl -fsSL https://opencode.ai/install | bash
 opencode --server
 
 # Set environment variables before starting your runner
-export USE_OPENCODE_SDK=1
+export ENABLE_OPENCODE_SDK=true
 export OPENCODE_URL=http://localhost:4096
 
 # Then start OpenBuilder

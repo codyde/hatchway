@@ -16,6 +16,9 @@ export interface TagOption {
   // For model tags - provider and model mapping
   provider?: string;
   model?: string;
+  // For model tags - which SDK this model belongs to ('agent', 'opencode', 'droid')
+  // Used to filter available models based on ENABLE_*_SDK environment variables
+  sdk?: 'agent' | 'opencode' | 'droid';
   // For framework tags - template repository information
   repository?: string;
   branch?: string;
@@ -53,7 +56,8 @@ export const TAG_DEFINITIONS: TagDefinition[] = [
         description: 'Anthropic Claude - Balanced performance and speed',
         logo: '/claude.png',
         provider: 'claude-code',
-        model: 'claude-sonnet-4-5'
+        model: 'claude-sonnet-4-5',
+        sdk: 'agent'
       },
       {
         value: 'claude-opus-4-5',
@@ -61,7 +65,8 @@ export const TAG_DEFINITIONS: TagDefinition[] = [
         description: 'Anthropic Claude - Most capable for complex tasks',
         logo: '/claude.png',
         provider: 'claude-code',
-        model: 'claude-opus-4-5'
+        model: 'claude-opus-4-5',
+        sdk: 'agent'
       },
       {
         value: 'claude-haiku-4-5',
@@ -69,7 +74,8 @@ export const TAG_DEFINITIONS: TagDefinition[] = [
         description: 'Anthropic Claude - Fastest, good for iterations',
         logo: '/claude.png',
         provider: 'claude-code',
-        model: 'claude-haiku-4-5'
+        model: 'claude-haiku-4-5',
+        sdk: 'agent'
       },
       {
         value: 'gpt-5.2-codex',
@@ -77,7 +83,35 @@ export const TAG_DEFINITIONS: TagDefinition[] = [
         description: 'OpenAI Codex - Advanced code generation',
         logo: '/openai.png',
         provider: 'openai-codex',
-        model: 'openai/gpt-5.2-codex'
+        model: 'openai/gpt-5.2-codex',
+        sdk: 'agent'
+      },
+      {
+        value: 'factory-droid-opus',
+        label: 'Factory Droid (Opus)',
+        description: 'Factory Droid SDK with Claude Opus 4.5',
+        logo: '/factory.svg',
+        provider: 'factory-droid',
+        model: 'claude-opus-4-5-20251101',
+        sdk: 'droid'
+      },
+      {
+        value: 'factory-droid-codex',
+        label: 'Factory Droid (Codex)',
+        description: 'Factory Droid SDK with GPT-5.2 Codex',
+        logo: '/factory.svg',
+        provider: 'factory-droid',
+        model: 'gpt-5.2-codex',
+        sdk: 'droid'
+      },
+      {
+        value: 'factory-droid-glm',
+        label: 'Factory Droid (GLM)',
+        description: 'Factory Droid SDK with GLM 4.7',
+        logo: '/factory.svg',
+        provider: 'factory-droid',
+        model: 'glm-4.7',
+        sdk: 'droid'
       }
     ]
   },

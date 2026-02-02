@@ -22,9 +22,13 @@ const nextConfig = {
       fullUrl: false,
     },
   },
-  // Expose local mode env var to client
+  // Expose environment variables to client
   env: {
     NEXT_PUBLIC_LOCAL_MODE: process.env.OPENBUILDER_LOCAL_MODE || 'false',
+    // SDK feature flags - control which SDKs are available in the UI
+    // By default, only Agent SDK (Claude + Codex) is enabled
+    NEXT_PUBLIC_ENABLE_OPENCODE_SDK: process.env.ENABLE_OPENCODE_SDK || 'false',
+    NEXT_PUBLIC_ENABLE_FACTORY_SDK: process.env.ENABLE_FACTORY_SDK || 'false',
   },
   webpack: (config) => {
     // Ensure @/lib/* resolves to ./src/lib/* within this app

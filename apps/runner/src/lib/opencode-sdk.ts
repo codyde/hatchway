@@ -494,9 +494,9 @@ export function createOpenCodeQuery(
  * Feature flag to control which implementation to use
  * 
  * Default: Claude Agent SDK (native)
- * Set USE_OPENCODE_SDK=1 to enable OpenCode multi-provider support
+ * Set ENABLE_OPENCODE_SDK=true to enable OpenCode multi-provider support
  * Note: OPENCODE_URL must also be set to the OpenCode service URL
  */
-export const USE_OPENCODE_SDK = process.env.USE_OPENCODE_SDK === '1' && !!process.env.OPENCODE_URL;
+export const ENABLE_OPENCODE_SDK = process.env.ENABLE_OPENCODE_SDK === 'true' && !!process.env.OPENCODE_URL;
 
 export type { TransformedMessage, MessagePart };

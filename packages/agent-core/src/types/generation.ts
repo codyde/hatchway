@@ -100,6 +100,7 @@ export interface GenerationState {
   operationType?: BuildOperationType; // Type of build operation
   agentId?: AgentId;
   claudeModelId?: ClaudeModelId;
+  droidModelId?: string; // Model ID for factory-droid agent
   todos: TodoItem[];
   toolsByTodo: Record<number, ToolCall[]>; // Tools nested under each todo index
   textByTodo: Record<number, TextMessage[]>; // Text messages nested under each todo

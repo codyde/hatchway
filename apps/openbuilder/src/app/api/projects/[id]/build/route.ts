@@ -101,16 +101,20 @@ export async function POST(
     // PRIORITY 1: Extract model from tags if present (tags take precedence)
     let agentId = body.agent ?? DEFAULT_AGENT_ID;
     let claudeModel: ClaudeModelId = DEFAULT_CLAUDE_MODEL_ID;
+    let droidModel: string | undefined; // Model ID for factory-droid agent
 
     if (body.tags && body.tags.length > 0) {
       const modelTag = body.tags.find(t => t.key === 'model');
       if (modelTag) {
         const parsed = parseModelTag(modelTag.value);
-        agentId = parsed.agent; // 'claude-code' or 'openai-codex'
+        agentId = parsed.agent; // 'claude-code', 'openai-codex', or 'factory-droid'
         if (agentId === 'claude-code' && parsed.claudeModel) {
           claudeModel = parsed.claudeModel as ClaudeModelId;
+        } else if (agentId === 'factory-droid' && parsed.claudeModel) {
+          // For factory-droid, the model is stored in claudeModel field from tag config
+          droidModel = parsed.claudeModel;
         }
-        console.log('[build-route] ✓ Model enforced from tags:', agentId, agentId === 'claude-code' ? claudeModel : '');
+        console.log('[build-route] ✓ Model enforced from tags:', agentId, agentId === 'claude-code' ? claudeModel : (agentId === 'factory-droid' ? droidModel : ''));
       }
     } else {
       // Fallback to body parameters if no model tag
@@ -239,6 +243,7 @@ export async function POST(
       operationType: body.operationType,
       agentId,
       claudeModelId: agentId === 'claude-code' ? claudeModel : undefined,
+      droidModelId: agentId === 'factory-droid' ? droidModel : undefined,
       todos: [],
       toolsByTodo: {},
       textByTodo: {},
@@ -263,6 +268,7 @@ export async function POST(
             ...existingState,
             agentId,
             claudeModelId: agentId === 'claude-code' ? claudeModel : undefined,
+            droidModelId: agentId === 'factory-droid' ? droidModel : undefined,
           };
           updatedRawState = JSON.stringify(mergedState);
         } catch (error) {
@@ -532,6 +538,7 @@ export async function POST(
         tags: body.tags,
         agent: agentId,
         claudeModel: agentId === 'claude-code' ? claudeModel : undefined,
+        droidModel: agentId === 'factory-droid' ? droidModel : undefined,
         template: templateMetadata,
         codexThreadId: body.codexThreadId,
         conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,

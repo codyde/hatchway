@@ -260,6 +260,9 @@ importers:
       drizzle-orm:
         specifier: ^0.44.5
         version: 0.44.7(@electric-sql/pglite@0.3.14)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(kysely@0.28.9)(pg@8.16.3)
+      droid-sdk:
+        specifier: file:/Users/codydearkland/droid-sdk
+        version: file:../droid-sdk
       express:
         specifier: ^5.1.0
         version: 5.2.1
@@ -3797,6 +3800,16 @@ packages:
       sql.js:
         optional: true
       sqlite3:
+        optional: true
+
+  droid-sdk@file:../droid-sdk:
+    resolution: {directory: ../droid-sdk, type: directory}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
+    peerDependencies:
+      discord.js: ^14.0.0
+    peerDependenciesMeta:
+      discord.js:
         optional: true
 
   dunder-proto@1.0.1:
@@ -9284,6 +9297,10 @@ snapshots:
       '@types/pg': 8.15.6
       kysely: 0.28.9
       pg: 8.16.3
+
+  droid-sdk@file:../droid-sdk:
+    dependencies:
+      dotenv: 16.6.1
 
   dunder-proto@1.0.1:
     dependencies:

@@ -5,7 +5,8 @@
  */
 
 // Agent types - 'claude-code' is the default, 'opencode' enabled via OPENCODE_URL env var
-export type AgentId = 'claude-code' | 'opencode' | 'openai-codex';
+// 'factory-droid' uses the Factory Droid SDK for builds
+export type AgentId = 'claude-code' | 'opencode' | 'openai-codex' | 'factory-droid';
 
 export const DEFAULT_AGENT_ID: AgentId = 'claude-code';
 
