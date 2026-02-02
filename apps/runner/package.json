@@ -1,6 +1,6 @@
 {
   "name": "@openbuilder/cli",
-  "version": "0.50.48",
+  "version": "0.50.49",
   "description": "OpenBuilder CLI - Build AI-powered apps with Claude. Just run: npx @openbuilder/cli runner",
   "private": false,
   "type": "module",
