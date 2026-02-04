@@ -1,6 +1,6 @@
 {
   "name": "hatchway",
-  "version": "0.50.49",
+  "version": "0.50.50",
   "description": "AI-powered project generation web application with real-time build tracking and code preview",
   "private": true,
   "author": "Cody De Arkland",
