@@ -16,10 +16,10 @@ import { isInsideMonorepo } from '../utils/repo-detector.js';
 import { configManager } from '../utils/config-manager.js';
 
 // GitHub API endpoint for releases
-const GITHUB_RELEASES_URL = 'https://api.github.com/repos/codyde/openbuilder/releases/latest';
+const GITHUB_RELEASES_URL = 'https://api.github.com/repos/codyde/hatchway/releases/latest';
 
 // Install command for CLI
-const INSTALL_COMMAND = 'curl -fsSL https://openbuilder.sh/install | bash';
+const INSTALL_COMMAND = 'curl -fsSL https://hatchway.sh/install | bash';
 
 interface UpgradeOptions {
   branch?: string;
@@ -28,7 +28,7 @@ interface UpgradeOptions {
 
 interface EnvBackup {
   runner: { env?: string; envLocal?: string };
-  openbuilder: { env?: string; envLocal?: string };
+  hatchway: { env?: string; envLocal?: string };
 }
 
 /**
@@ -42,7 +42,7 @@ async function fetchLatestVersion(): Promise<string | null> {
     const response = await fetch(GITHUB_RELEASES_URL, {
       headers: {
         'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'OpenBuilder-CLI-Upgrade',
+        'User-Agent': 'Hatchway-CLI-Upgrade',
       },
       signal: controller.signal,
     });
@@ -90,7 +90,7 @@ function performCLIUpdate(): boolean {
       shell: '/bin/bash',
       env: {
         ...process.env,
-        OPENBUILDER_QUIET_INSTALL: '1',
+        HATCHWAY_QUIET_INSTALL: '1',
       },
     });
     return true;
@@ -124,17 +124,17 @@ export async function upgradeCommand(options: UpgradeOptions) {
   // STEP 1: Always update CLI automatically
   // ========================================
   s.start('Checking for CLI updates');
-  
+
   const latestVersion = await fetchLatestVersion();
-  
+
   if (latestVersion && isNewerVersion(currentVersion, latestVersion)) {
     s.stop(pc.cyan('⬆') + ` CLI update available: ${pc.dim(currentVersion)} → ${pc.green(latestVersion)}`);
-    
+
     console.log();
     console.log(`  ${pc.dim('Updating CLI...')}`);
-    
+
     const cliSuccess = performCLIUpdate();
-    
+
     if (cliSuccess) {
       console.log(`  ${pc.green('✓')} CLI updated to ${pc.green(latestVersion)}`);
       console.log();
@@ -152,7 +152,7 @@ export async function upgradeCommand(options: UpgradeOptions) {
   // ========================================
   // STEP 2: Find app installation and prompt
   // ========================================
-  s.start('Locating OpenBuilder app installation');
+  s.start('Locating Hatchway app installation');
 
   let monorepoRoot: string | undefined;
   const config = configManager.get();
@@ -171,29 +171,29 @@ export async function upgradeCommand(options: UpgradeOptions) {
   }
 
   if (!monorepoRoot) {
-    s.stop(pc.dim('ℹ') + ' No OpenBuilder app installation found');
+    s.stop(pc.dim('ℹ') + ' No Hatchway app installation found');
     console.log();
     console.log(pc.dim('  The CLI has been updated. No local app installation to upgrade.'));
-    console.log(pc.dim('  Run ') + pc.cyan('openbuilder init') + pc.dim(' to set up a local installation.'));
+    console.log(pc.dim('  Run ') + pc.cyan('hatchway init') + pc.dim(' to set up a local installation.'));
     console.log();
     return;
   }
 
   s.stop(pc.green('✓') + ` Found app installation`);
-  
+
   // Prompt user about upgrading the app
   console.log();
   console.log(`  ${pc.bold('App installation found:')}`);
   console.log(`  ${pc.cyan(monorepoRoot)}`);
   console.log();
-  
+
   // Skip prompt if --force is used
   if (!options.force) {
     const shouldUpgradeApp = await p.confirm({
       message: 'Would you like to upgrade the app installation as well?',
       initialValue: true,
     });
-    
+
     if (p.isCancel(shouldUpgradeApp) || !shouldUpgradeApp) {
       console.log();
       console.log(pc.dim('  Skipping app upgrade. CLI has been updated.'));
@@ -201,7 +201,7 @@ export async function upgradeCommand(options: UpgradeOptions) {
       return;
     }
   }
-  
+
   console.log();
 
   // Check git status before upgrading
@@ -246,15 +246,15 @@ export async function upgradeCommand(options: UpgradeOptions) {
 
   const envBackup: EnvBackup = {
     runner: {},
-    openbuilder: {},
+    hatchway: {},
   };
 
   // Define paths to check
   const envPaths = [
     { app: 'runner', path: join(monorepoRoot, 'apps/runner/.env') },
     { app: 'runner', pathLocal: join(monorepoRoot, 'apps/runner/.env.local') },
-    { app: 'openbuilder', path: join(monorepoRoot, 'apps/openbuilder/.env') },
-    { app: 'openbuilder', pathLocal: join(monorepoRoot, 'apps/openbuilder/.env.local') },
+    { app: 'hatchway', path: join(monorepoRoot, 'apps/hatchway/.env') },
+    { app: 'hatchway', pathLocal: join(monorepoRoot, 'apps/hatchway/.env.local') },
   ];
 
   let backedUpCount = 0;
@@ -293,7 +293,7 @@ export async function upgradeCommand(options: UpgradeOptions) {
 
   try {
     execSync(
-      `git clone --branch ${branch} --depth 1 https://github.com/codyde/openbuilder.git "${tempDir}"`,
+      `git clone --branch ${branch} --depth 1 https://github.com/codyde/hatchway.git "${tempDir}"`,
       {
         cwd: parentDir,
         stdio: 'pipe', // Silent
@@ -314,8 +314,8 @@ export async function upgradeCommand(options: UpgradeOptions) {
       message: `Failed to clone branch "${branch}"`,
       suggestions: [
         'Check your internet connection',
-        'Verify the branch exists: https://github.com/codyde/openbuilder/tree/' + branch,
-        'Try upgrading to main: openbuilder upgrade',
+        'Verify the branch exists: https://github.com/codyde/hatchway/tree/' + branch,
+        'Try upgrading to main: hatchway upgrade',
       ],
     });
   }
@@ -328,8 +328,8 @@ export async function upgradeCommand(options: UpgradeOptions) {
   const restorePaths = [
     { app: 'runner' as const, file: '.env', dir: join(tempDir, 'apps/runner') },
     { app: 'runner' as const, file: '.env.local', dir: join(tempDir, 'apps/runner') },
-    { app: 'openbuilder' as const, file: '.env', dir: join(tempDir, 'apps/openbuilder') },
-    { app: 'openbuilder' as const, file: '.env.local', dir: join(tempDir, 'apps/openbuilder') },
+    { app: 'hatchway' as const, file: '.env', dir: join(tempDir, 'apps/hatchway') },
+    { app: 'hatchway' as const, file: '.env.local', dir: join(tempDir, 'apps/hatchway') },
   ];
 
   for (const item of restorePaths) {
@@ -422,8 +422,8 @@ export async function upgradeCommand(options: UpgradeOptions) {
 
   // Apply database migrations (if DATABASE_URL exists)
   const databaseUrl =
-    envBackup.openbuilder.env?.match(/DATABASE_URL=["']?([^"'\n]+)["']?/)?.[1] ||
-    envBackup.openbuilder.envLocal?.match(/DATABASE_URL=["']?([^"'\n]+)["']?/)?.[1] ||
+    envBackup.hatchway.env?.match(/DATABASE_URL=["']?([^"'\n]+)["']?/)?.[1] ||
+    envBackup.hatchway.envLocal?.match(/DATABASE_URL=["']?([^"'\n]+)["']?/)?.[1] ||
     process.env.DATABASE_URL;
 
   if (databaseUrl) {
@@ -431,7 +431,7 @@ export async function upgradeCommand(options: UpgradeOptions) {
 
     try {
       execSync('npx drizzle-kit push --config=drizzle.config.ts', {
-        cwd: join(tempDir, 'apps/openbuilder'),
+        cwd: join(tempDir, 'apps/hatchway'),
         stdio: 'pipe',
         env: {
           ...process.env,
@@ -442,7 +442,7 @@ export async function upgradeCommand(options: UpgradeOptions) {
       s.stop(pc.green('✓') + ' Database schema updated');
     } catch (error) {
       s.stop(pc.yellow('⚠') + ' Migration failed');
-      console.log(pc.dim('  You may need to run: openbuilder database'));
+      console.log(pc.dim('  You may need to run: hatchway database'));
       console.log(pc.dim('  This won\'t prevent the upgrade from completing'));
     }
   } else {
@@ -521,7 +521,7 @@ export async function upgradeCommand(options: UpgradeOptions) {
 
   if (branch !== 'main') {
     console.log(pc.yellow('⚠') + ` You upgraded to branch: ${pc.cyan(branch)}`);
-    console.log(pc.dim('  To return to main: openbuilder upgrade'));
+    console.log(pc.dim('  To return to main: hatchway upgrade'));
     console.log();
   }
 }

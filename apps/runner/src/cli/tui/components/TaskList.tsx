@@ -23,7 +23,7 @@ interface TaskListProps {
  * ✓  Repository cloned
  * ✓  Dependencies installed
  * ⠋  Building packages...
- *    └─ @openbuilder/agent-core
+ *    └─ @hatchway/agent-core
  * ○  Database setup
  */
 export function TaskList({ tasks }: TaskListProps) {

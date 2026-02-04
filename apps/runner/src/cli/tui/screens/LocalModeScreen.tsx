@@ -35,18 +35,18 @@ export function LocalModeScreen({ isInitialized, onSelect, onEscape }: LocalMode
   if (!isInitialized) {
     menuItems.push({
       id: 'init',
-      label: 'Initialize OpenBuilder',
+      label: 'Initialize Hatchway',
       description: 'Set up workspace and configuration',
     });
   } else {
     menuItems.push({
       id: 'init',
-      label: 'Reinitialize OpenBuilder',
+      label: 'Reinitialize Hatchway',
       description: 'Reset and reconfigure',
     });
     menuItems.push({
       id: 'start',
-      label: 'Start OpenBuilder',
+      label: 'Start Hatchway',
       description: 'Launch the full stack',
     });
   }

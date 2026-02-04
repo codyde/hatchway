@@ -175,7 +175,7 @@ jobs:
         if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
         run: |
           echo "Building agent-core..."
-          pnpm --filter @openbuilder/agent-core build
+          pnpm --filter @hatchway/agent-core build
 
       - name: Build CLI
         if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
@@ -222,17 +222,17 @@ jobs:
           echo "Created tarball:"
           ls -lh *.tgz
 
-          mv *.tgz openbuilder-cli.tgz
+          mv *.tgz hatchway-cli.tgz
 
           echo ""
-          echo "✓ Package created: openbuilder-cli.tgz"
+          echo "✓ Package created: hatchway-cli.tgz"
 
       - name: Publish to npm
         if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
         run: |
           cd apps/runner
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Publishing @openbuilder/cli v${{ steps.version.outputs.new_version }} to npm..."
+          echo "Publishing @hatchway/cli v${{ steps.version.outputs.new_version }} to npm..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           npm publish --access public
           echo "✓ Published to npm"
@@ -244,9 +244,9 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.version.outputs.new_version }}
-          name: OpenBuilder CLI ${{ steps.version.outputs.new_version }}
+          name: Hatchway CLI ${{ steps.version.outputs.new_version }}
           body: |
-            # OpenBuilder CLI ${{ steps.version.outputs.new_version }}
+            # Hatchway CLI ${{ steps.version.outputs.new_version }}
 
             AI-powered project generation with local runner support.
 
@@ -258,24 +258,24 @@ jobs:
             ## Installation
 
             ```bash
-            curl -fsSL https://openbuilder.sh/install | bash
+            curl -fsSL https://hatchway.sh/install | bash
             ```
 
             Or install via npm:
 
             ```bash
-            npm install -g @openbuilder/cli
+            npm install -g @hatchway/cli
             ```
 
             ## Quick Start
 
             ```bash
-            openbuilder runner
+            hatchway runner
             ```
 
-            See [full documentation](https://github.com/codyde/openbuilder/blob/main/apps/runner/README.md) for details.
+            See [full documentation](https://github.com/codyde/hatchway/blob/main/apps/runner/README.md) for details.
           files: |
-            apps/runner/openbuilder-cli.tgz
+            apps/runner/hatchway-cli.tgz
           draft: false
           prerelease: false
         env:

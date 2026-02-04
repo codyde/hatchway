@@ -26,7 +26,7 @@ type CanUseToolFn = (
  * 3. Blocking dangerous bash commands (rm -rf /, sudo, etc.)
  * 4. Preventing directory changes that escape the project
  *
- * @param projectDirectory Absolute path to the project directory (e.g., /Users/codydearkland/openbuilder-workspace/codyscoolnewapp)
+ * @param projectDirectory Absolute path to the project directory (e.g., /Users/codydearkland/hatchway-workspace/codyscoolnewapp)
  * @returns Permission handler function for use with Claude Agent SDK
  */
 export function createProjectScopedPermissionHandler(projectDirectory: string): CanUseToolFn {

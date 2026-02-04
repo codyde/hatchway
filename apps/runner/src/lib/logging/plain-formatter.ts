@@ -62,7 +62,7 @@ export function formatHeader(config: {
   const line = '━'.repeat(60);
   const lines = [
     chalk.cyan(line),
-    chalk.cyan.bold(' OpenBuilder Runner'),
+    chalk.cyan.bold(' Hatchway Runner'),
     chalk.cyan(line),
     `${chalk.gray(' Runner ID  ')} ${chalk.white(config.runnerId)}`,
     `${chalk.gray(' Server     ')} ${chalk.white(config.serverUrl)}`,

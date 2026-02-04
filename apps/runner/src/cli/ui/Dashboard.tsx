@@ -885,7 +885,7 @@ export function Dashboard({ serviceManager, apiUrl, webPort, logFilePath }: Dash
   }
 
   // Check for available update (set by auto-update check in index.ts)
-  const updateAvailable = process.env.OPENBUILDER_UPDATE_AVAILABLE;
+  const updateAvailable = process.env.HATCHWAY_UPDATE_AVAILABLE;
 
   // Main dashboard view
   return (
@@ -898,7 +898,7 @@ export function Dashboard({ serviceManager, apiUrl, webPort, logFilePath }: Dash
           <Text color={baseColors.cyan}>⬆ Update available: </Text>
           <Text color={baseColors.success}>{updateAvailable}</Text>
           <Text color={themeColors.textMuted}> — Run </Text>
-          <Text color={baseColors.cyan}>openbuilder upgrade</Text>
+          <Text color={baseColors.cyan}>hatchway upgrade</Text>
           <Text color={themeColors.textMuted}> to update</Text>
         </Box>
       )}

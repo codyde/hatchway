@@ -7,7 +7,7 @@ export default defineConfig({
     'client': 'src/client.ts',
     'server': 'src/server.ts',
     
-    // Lib exports (for deep imports like @openbuilder/agent-core/lib/agents)
+    // Lib exports (for deep imports like @hatchway/agent-core/lib/agents)
     'lib/agents/index': 'src/lib/agents/index.ts',
     'lib/agents/codex/events': 'src/lib/agents/codex/events.ts',
     'lib/runner/broker-state': 'src/lib/runner/broker-state.ts',

@@ -113,7 +113,7 @@ export const errors = {
       context: { port, process },
       suggestions: [
         `Stop the existing process: lsof -ti:${port} | xargs kill`,
-        `Or let OpenBuilder kill it: openbuilder run --force`,
+        `Or let Hatchway kill it: hatchway run --force`,
         process ? `The port is being used by: ${process}` : 'Check what process is using the port: lsof -i:' + port,
       ],
     });
@@ -135,22 +135,22 @@ export const errors = {
       context: { host, error: cause.message },
       cause,
       suggestions: [
-        'Verify your connection string: openbuilder config get databaseUrl',
+        'Verify your connection string: hatchway config get databaseUrl',
         'Test the connection manually: psql <connection-string>',
-        'Reset database setup: openbuilder db setup --force',
+        'Reset database setup: hatchway db setup --force',
       ],
-      docs: 'https://github.com/codyde/openbuilder#database-setup',
+      docs: 'https://github.com/codyde/hatchway#database-setup',
     });
   },
 
   monorepoNotFound: (searchedPaths: string[]): CLIError => {
     return new CLIError({
       code: 'MONOREPO_NOT_FOUND',
-      message: 'OpenBuilder monorepo not found',
+      message: 'Hatchway monorepo not found',
       context: { searchedPaths },
       suggestions: [
-        'Run initialization: openbuilder init',
-        'Or specify path: openbuilder run --monorepo ~/openbuilder',
+        'Run initialization: hatchway init',
+        'Or specify path: hatchway run --monorepo ~/hatchway',
       ],
     });
   },
@@ -160,10 +160,10 @@ export const errors = {
       code: 'CONFIG_NOT_FOUND',
       message: 'Configuration not found',
       suggestions: [
-        'Initialize OpenBuilder: openbuilder init',
+        'Initialize Hatchway: hatchway init',
         'This will create your configuration file',
       ],
-      docs: 'https://github.com/codyde/openbuilder#getting-started',
+      docs: 'https://github.com/codyde/hatchway#getting-started',
     });
   },
 
@@ -174,8 +174,8 @@ export const errors = {
       context: { path },
       suggestions: [
         'Create the directory: mkdir -p ' + path,
-        'Or reconfigure workspace: openbuilder config set workspace <path>',
-        'Or re-run init: openbuilder init',
+        'Or reconfigure workspace: hatchway config set workspace <path>',
+        'Or re-run init: hatchway init',
       ],
     });
   },
@@ -187,9 +187,9 @@ export const errors = {
       context: { service },
       cause,
       suggestions: [
-        'Check if dependencies are installed: cd ~/.openbuilder-monorepo && pnpm install',
+        'Check if dependencies are installed: cd ~/.hatchway-monorepo && pnpm install',
         'Check if ports are available: lsof -i:3000 -i:4000',
-        'Try restarting: openbuilder run --force',
+        'Try restarting: hatchway run --force',
       ],
     });
   },
@@ -200,7 +200,7 @@ export const errors = {
       message: `Invalid argument: ${arg}`,
       context: { argument: arg, reason },
       suggestions: [
-        'Check the command usage: openbuilder --help',
+        'Check the command usage: hatchway --help',
       ],
     });
   },

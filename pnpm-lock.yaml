@@ -16,7 +16,7 @@ importers:
         specifier: ^2.5.8
         version: 2.6.3
 
-  apps/openbuilder:
+  apps/openhatch:
     dependencies:
       '@modelcontextprotocol/sdk':
         specifier: ^1.20.2
@@ -24,10 +24,10 @@ importers:
       '@monaco-editor/react':
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.55.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@openbuilder/agent-core':
+      '@openhatch/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
-      '@openbuilder/opencode-client':
+      '@openhatch/opencode-client':
         specifier: workspace:*
         version: link:../../packages/opencode-client
       '@radix-ui/react-alert-dialog':
@@ -190,7 +190,7 @@ importers:
 
   apps/opencode-service:
     dependencies:
-      '@openbuilder/agent-core':
+      '@openhatch/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
       '@opencode-ai/sdk':
@@ -236,13 +236,13 @@ importers:
       '@openai/codex-sdk':
         specifier: ^0.93.0
         version: 0.93.0
-      '@openbuilder/agent-core':
+      '@openhatch/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
-      '@openbuilder/droid-sdk':
+      '@openhatch/droid-sdk':
         specifier: ^1.0.0
         version: 1.0.0
-      '@openbuilder/opencode-client':
+      '@openhatch/opencode-client':
         specifier: workspace:*
         version: link:../../packages/opencode-client
       '@sentry/node':
@@ -1573,7 +1573,7 @@ packages:
     resolution: {integrity: sha512-9eHMhbXVIylI+lgh+Kput2DEakbYmJBTGHMXgzWwV58/NRrYVCKiAbWS462fHnlRxrJcF7Lmofa0V7uOZp7w7Q==}
     engines: {node: '>=18'}
 
-  '@openbuilder/droid-sdk@1.0.0':
+  '@openhatch/droid-sdk@1.0.0':
     resolution: {integrity: sha512-rKELnoOL+W7U3m4S7KulEd2eyiF8UjwHI9oyLsRDnFT65n1+bXSn3S/HtjpEwCPVR2Ghk5NEChOdnWdfmusGpA==}
     engines: {node: '>=18.0.0'}
     hasBin: true
@@ -7175,7 +7175,7 @@ snapshots:
 
   '@openai/codex-sdk@0.93.0': {}
 
-  '@openbuilder/droid-sdk@1.0.0':
+  '@openhatch/droid-sdk@1.0.0':
     dependencies:
       dotenv: 16.6.1
 

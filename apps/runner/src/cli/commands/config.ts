@@ -8,7 +8,7 @@ export async function configCommand(action: string, key?: string, value?: string
     case 'get':
       if (!key) {
         logger.error('Key is required for get action');
-        logger.info('Usage: openbuilder config get <key>');
+        logger.info('Usage: hatchway config get <key>');
         process.exit(1);
       }
       handleGet(key);
@@ -17,7 +17,7 @@ export async function configCommand(action: string, key?: string, value?: string
     case 'set':
       if (!key || !value) {
         logger.error('Key and value are required for set action');
-        logger.info('Usage: openbuilder config set <key> <value>');
+        logger.info('Usage: hatchway config set <key> <value>');
         process.exit(1);
       }
       handleSet(key, value);
@@ -168,7 +168,7 @@ async function handleReset() {
   try {
     configManager.reset();
     logger.success('Configuration reset to defaults');
-    logger.info('Run "openbuilder init" to reconfigure');
+    logger.info('Run "hatchway init" to reconfigure');
   } catch (error) {
     logger.error('Failed to reset configuration');
     logger.error(error instanceof Error ? error.message : 'Unknown error');

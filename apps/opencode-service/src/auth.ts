@@ -1,20 +1,20 @@
 /**
  * Authentication helpers for OpenCode Service
- * 
+ *
  * Validates runner keys and shared secrets for API access.
- * Integrates with the existing OpenBuilder auth system.
+ * Integrates with the existing Hatchway auth system.
  */
 
 import { createHash } from 'crypto';
-import { db } from '@openbuilder/agent-core';
-import { runnerKeys } from '@openbuilder/agent-core/lib/db/schema';
+import { db } from '@hatchway/agent-core';
+import { runnerKeys } from '@hatchway/agent-core/lib/db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 
 /**
  * Check if running in local mode
  */
 export function isLocalMode(): boolean {
-  return process.env.OPENBUILDER_LOCAL_MODE === 'true';
+  return process.env.HATCHWAY_LOCAL_MODE === 'true';
 }
 
 /**
@@ -95,7 +95,7 @@ export async function authenticateRunnerKey(key: string): Promise<AuthResult> {
       error: 'Invalid or revoked runner key',
     };
   } catch (error) {
-    console.error('[opencode-service] Error validating runner key:', error);
+    console.error('[hatchway-opencode-service] Error validating runner key:', error);
     return {
       authenticated: false,
       error: 'Failed to validate runner key',

@@ -1,5 +1,5 @@
 {
-  "name": "@openbuilder/opencode-service",
+  "name": "@hatchway/opencode-service",
   "version": "0.27.3",
   "private": true,
   "type": "module",
@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@opencode-ai/sdk": "^1.0.0",
-    "@openbuilder/agent-core": "workspace:*",
+    "@hatchway/agent-core": "workspace:*",
     "@sentry/node": "^10.37.0",
     "drizzle-orm": "^0.43.1",
     "express": "^4.21.0",

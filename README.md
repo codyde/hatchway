@@ -1,27 +1,27 @@
-# OpenBuilder
+# Hatchway
 
-OpenBuilder is an AI-powered application builder that leverages Claude Code, OpenAI Codex, or OpenCode to generate and build projects. You can run it locally on your machine or connect a runner to the hosted SaaS version at [openbuilder.sh](https://openbuilder.sh).
+Hatchway is an AI-powered application builder that leverages Claude Code, OpenAI Codex, or OpenCode to generate and build projects. You can run it locally on your machine or connect a runner to the hosted SaaS version at [hatchway.sh](https://hatchway.sh).
 
 ## Quick Start
 
 ```bash
 # Install the CLI
-curl -fsSL https://openbuilder.sh/install | bash
+curl -fsSL https://hatchway.sh/install | bash
 
 # Launch the TUI
-openbuilder
+hatchway
 ```
 
 This opens an interactive TUI where you can choose:
 - **Local Mode** - Run the full stack locally (web app + runner)
-- **Runner Mode** - Connect to the hosted SaaS at openbuilder.sh
+- **Runner Mode** - Connect to the hosted SaaS at hatchway.sh
 
 ## Local Mode (Self-Hosted)
 
 Run everything locally on your machine.
 
 ```bash
-openbuilder
+hatchway
 # Select "Local mode" from the TUI
 ```
 
@@ -33,27 +33,27 @@ Open `http://localhost:3000` in your browser and start building!
 
 ## Runner Mode (Connect to SaaS)
 
-Connect your local machine as a runner to the hosted OpenBuilder at [openbuilder.sh](https://openbuilder.sh).
+Connect your local machine as a runner to the hosted Hatchway at [hatchway.sh](https://hatchway.sh).
 
 ```bash
-# Connect to openbuilder.sh (opens browser for authentication)
-openbuilder runner
+# Connect to hatchway.sh (opens browser for authentication)
+hatchway runner
 ```
 
 This will:
 1. Open your browser for authentication (GitHub or Sentry)
 2. Automatically create a runner token
-3. Connect your machine to openbuilder.sh
+3. Connect your machine to hatchway.sh
 
 You can also use the interactive TUI:
 ```bash
-openbuilder
+hatchway
 # Select "Runner mode" from the menu
 ```
 
 ## AI Backends
 
-OpenBuilder supports multiple AI backends for code generation.
+Hatchway supports multiple AI backends for code generation.
 
 ### Claude Code (Default)
 
@@ -100,8 +100,8 @@ opencode --server
 export ENABLE_OPENCODE_SDK=true
 export OPENCODE_URL=http://localhost:4096
 
-# Then start OpenBuilder
-openbuilder
+# Then start Hatchway
+hatchway
 ```
 
 When OpenCode is enabled, all AI requests are routed through your OpenCode server. Configure your preferred provider by running `/connect` in the OpenCode TUI. See the [OpenCode Providers documentation](https://opencode.ai/docs/providers/) for the full list of 75+ supported providers.
@@ -140,35 +140,35 @@ Use the tag selector in the web UI to configure your build:
 
 | Command | Description |
 |---------|-------------|
-| `openbuilder` | Launch TUI to choose local or runner mode |
-| `openbuilder runner` | Connect to openbuilder.sh (auto-login via browser) |
-| `openbuilder login` | Authenticate with openbuilder.sh |
-| `openbuilder run` | Start local mode directly |
-| `openbuilder init` | Interactive setup wizard |
-| `openbuilder upgrade` | Upgrade CLI and app installation |
-| `openbuilder status` | Show runner status and configuration |
-| `openbuilder config list` | View all configuration |
-| `openbuilder cleanup --all` | Clean up all projects |
+| `hatchway` | Launch TUI to choose local or runner mode |
+| `hatchway runner` | Connect to hatchway.sh (auto-login via browser) |
+| `hatchway login` | Authenticate with hatchway.sh |
+| `hatchway run` | Start local mode directly |
+| `hatchway init` | Interactive setup wizard |
+| `hatchway upgrade` | Upgrade CLI and app installation |
+| `hatchway status` | Show runner status and configuration |
+| `hatchway config list` | View all configuration |
+| `hatchway cleanup --all` | Clean up all projects |
 
 ## Configuration
 
 Configuration is stored at:
-- **macOS**: `~/Library/Application Support/openbuilder/config.json`
-- **Linux**: `~/.config/openbuilder/config.json`
+- **macOS**: `~/Library/Application Support/hatchway/config.json`
+- **Linux**: `~/.config/hatchway/config.json`
 
 Override settings with command-line flags:
 ```bash
-openbuilder runner \
+hatchway runner \
   --workspace ~/my-projects \
   --runner-id my-runner
 ```
 
 ## Project Structure
 
-Generated projects are saved to your workspace directory (default: `~/openbuilder-workspace/`):
+Generated projects are saved to your workspace directory (default: `~/hatchway-workspace/`):
 
 ```
-~/openbuilder-workspace/
+~/hatchway-workspace/
 ├── react-todo-app/
 │   ├── package.json
 │   ├── src/
@@ -188,7 +188,7 @@ source ~/.bashrc  # or ~/.zshrc
 ### Cannot connect to server
 Check your internet connection and runner key:
 ```bash
-openbuilder status
+hatchway status
 ```
 
 ### Build fails
@@ -201,9 +201,9 @@ claude --version  # If using Claude Code
 
 ### Reset everything
 ```bash
-openbuilder config reset
-openbuilder cleanup --all
-openbuilder init
+hatchway config reset
+hatchway cleanup --all
+hatchway init
 ```
 
 ## Development
@@ -214,8 +214,8 @@ For detailed development instructions, see the [CLI README](apps/runner/README.m
 
 ```bash
 # Clone the repo
-git clone https://github.com/codyde/openbuilder.git
-cd openbuilder
+git clone https://github.com/codyde/hatchway.git
+cd hatchway
 
 # Install dependencies
 pnpm install

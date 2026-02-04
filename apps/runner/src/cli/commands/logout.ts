@@ -4,16 +4,16 @@ import { logger } from '../utils/logger.js';
 
 /**
  * Logout command - clear stored credentials
- * 
+ *
  * Usage:
- *   openbuilder logout
- * 
+ *   hatchway logout
+ *
  * This command clears the locally stored runner token.
  * The token remains valid on the server - you can revoke it
- * from the OpenBuilder dashboard if needed.
+ * from the Hatchway dashboard if needed.
  */
 export async function logoutCommand() {
-  logger.section('OpenBuilder Logout');
+  logger.section('Hatchway Logout');
   
   if (!hasStoredToken()) {
     logger.info('Not currently logged in.');
@@ -25,7 +25,7 @@ export async function logoutCommand() {
   logger.success('Logged out successfully.');
   logger.info('');
   logger.info('Note: The runner token is still valid on the server.');
-  logger.info('To revoke it, visit your OpenBuilder dashboard.');
+  logger.info('To revoke it, visit your Hatchway dashboard.');
   logger.info('');
-  logger.info(`Run ${chalk.cyan('openbuilder login')} to authenticate again.`);
+  logger.info(`Run ${chalk.cyan('hatchway login')} to authenticate again.`);
 }

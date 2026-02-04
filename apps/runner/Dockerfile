@@ -1,4 +1,4 @@
-# Railway-optimized Dockerfile for OpenBuilder CLI
+# Railway-optimized Dockerfile for Hatchway CLI
 FROM node:20-slim
 
 # Install pnpm and Claude Code CLI globally
@@ -31,7 +31,7 @@ COPY packages/agent-core/package.json packages/agent-core/tsconfig.json ./packag
 
 # Copy vendor files (required by package.json file: dependencies)
 COPY apps/runner/vendor ./apps/runner/vendor
-COPY apps/openbuilder/vendor ./apps/openbuilder/vendor
+COPY apps/hatchway/vendor ./apps/hatchway/vendor
 
 # Copy source code (needed before install due to prepare scripts)
 COPY apps/runner/src ./apps/runner/src
@@ -43,7 +43,7 @@ COPY packages/agent-core/src ./packages/agent-core/src
 RUN pnpm install --frozen-lockfile
 
 # Build runner (agent-core already built by prepare script)
-RUN pnpm --filter @openbuilder/cli build
+RUN pnpm --filter @hatchway/cli build
 
 # Create workspace directory (will be mounted as volume in Railway)
 RUN mkdir -p /data/workspace

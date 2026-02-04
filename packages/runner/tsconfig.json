@@ -14,10 +14,10 @@
     "types": ["node"],
     "resolveJsonModule": true,
     "paths": {
-      "@openbuilder/cli/*": ["../../apps/runner/src/*"],
-      "@openbuilder/cli": ["../../apps/runner/src/index.ts"],
-      "@openbuilder/agent-core/*": ["../agent-core/src/*"],
-      "@openbuilder/agent-core": ["../agent-core/src/index.ts"]
+      "@hatchway/cli/*": ["../../apps/runner/src/*"],
+      "@hatchway/cli": ["../../apps/runner/src/index.ts"],
+      "@hatchway/agent-core/*": ["../agent-core/src/*"],
+      "@hatchway/agent-core": ["../agent-core/src/index.ts"]
     },
     "baseUrl": "."
   },

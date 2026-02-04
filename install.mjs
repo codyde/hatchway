@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 /**
- * OpenBuilder CLI Installer
- * 
- * A beautiful installer for the OpenBuilder CLI.
- * 
- * Usage: curl -fsSL https://openbuilder.sh/install.mjs | node -
+ * Hatchway CLI Installer
+ *
+ * A beautiful installer for the Hatchway CLI.
+ *
+ * Usage: curl -fsSL https://hatchway.sh/install.mjs | node -
  */
 
 import { execSync, spawn } from 'node:child_process';
@@ -118,7 +118,7 @@ async function getLatestVersion() {
   
   try {
     // Use npm registry as source of truth since that's where we install from
-    const npmResponse = await fetch('https://registry.npmjs.org/@openbuilder/cli/latest');
+    const npmResponse = await fetch('https://registry.npmjs.org/@hatchway/cli/latest');
     if (npmResponse.ok) {
       const data = await npmResponse.json();
       const version = `v${data.version}`;
@@ -298,7 +298,7 @@ function printNpmNotFoundError() {
   console.log(`${c.error}  ${c.bold}npm is required${c.reset}`);
   console.log(`${c.error}  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${c.reset}`);
   console.log();
-  console.log(`  ${c.dimGray}OpenBuilder requires npm to install pnpm.${c.reset}`);
+  console.log(`  ${c.dimGray}Hatchway requires npm to install pnpm.${c.reset}`);
   console.log(`  ${c.dimGray}npm should be included with Node.js.${c.reset}`);
   console.log();
   console.log(`  ${c.dimGray}Please reinstall Node.js from:${c.reset}`);
@@ -329,7 +329,7 @@ async function installCLI(version) {
   // Install from npm registry with explicit version to avoid pnpm cache issues
   // Strip 'v' prefix if present (GitHub releases use 'v1.0.0', npm uses '1.0.0')
   const cleanVersion = version.startsWith('v') ? version.slice(1) : version;
-  const packageSpec = `@openbuilder/cli@${cleanVersion}`;
+  const packageSpec = `@hatchway/cli@${cleanVersion}`;
   
   // Check pnpm availability - install if not present
   if (!hasPnpm()) {
@@ -364,7 +364,7 @@ async function installCLI(version) {
     }
   }
   
-  const spinner = isQuietMode ? null : new Spinner('Installing OpenBuilder CLI...').start();
+  const spinner = isQuietMode ? null : new Spinner('Installing Hatchway CLI...').start();
   
   const installArgs = ['add', '-g', packageSpec];
   
@@ -397,7 +397,7 @@ async function installCLI(version) {
     
     proc.on('close', (code) => {
       if (code === 0) {
-        if (spinner) spinner.success('OpenBuilder CLI installed');
+        if (spinner) spinner.success('Hatchway CLI installed');
         resolve();
       } else {
         if (spinner) spinner.error('Installation failed');
@@ -419,16 +419,16 @@ async function installCLI(version) {
 function verifyInstallation() {
   try {
     // Skip update check to prevent recursive installer calls
-    const output = execSync('openbuilder --version', { 
+    const output = execSync('hatchway --version', { 
       encoding: 'utf8',
-      env: { ...process.env, OPENBUILDER_SKIP_UPDATE_CHECK: '1' },
+      env: { ...process.env, HATCHWAY_SKIP_UPDATE_CHECK: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
     // Extract just the version number (last line or the line with the version)
     const lines = output.split('\n');
     const versionLine = lines.find(l => /^\d+\.\d+\.\d+/.test(l.trim())) || lines[lines.length - 1];
     const version = versionLine.trim();
-    log(`  ${S.success} Verified: ${c.dim}openbuilder v${version}${c.reset}`);
+    log(`  ${S.success} Verified: ${c.dim}hatchway v${version}${c.reset}`);
     return true;
   } catch {
     log(`  ${S.warning} Could not verify installation`);
@@ -459,9 +459,9 @@ function printSuccess() {
   
   console.log(`  ${c.dimGray}Get started:${c.reset}`);
   console.log();
-  console.log(`    ${c.cyan}openbuilder${c.reset}          Launch the interactive TUI`);
-  console.log(`    ${c.cyan}openbuilder init${c.reset}     Initialize configuration`);
-  console.log(`    ${c.cyan}openbuilder --help${c.reset}   Show all commands`);
+  console.log(`    ${c.cyan}hatchway${c.reset}          Launch the interactive TUI`);
+  console.log(`    ${c.cyan}hatchway init${c.reset}     Initialize configuration`);
+  console.log(`    ${c.cyan}hatchway --help${c.reset}   Show all commands`);
   console.log();
 }
 
@@ -499,19 +499,19 @@ function printFailure(error) {
     console.log(`  ${c.warning}Out of memory error detected.${c.reset}`);
     console.log();
     console.log(`  ${c.dimGray}Try running with increased memory:${c.reset}`);
-    console.log(`    ${c.cyan}NODE_OPTIONS="--max-old-space-size=8192" pnpm add -g @openbuilder/cli${c.reset}`);
+    console.log(`    ${c.cyan}NODE_OPTIONS="--max-old-space-size=8192" pnpm add -g @hatchway/cli${c.reset}`);
   } else {
     console.log(`  ${c.dimGray}Try manual installation:${c.reset}`);
-    console.log(`    ${c.cyan}pnpm add -g @openbuilder/cli${c.reset}`);
+    console.log(`    ${c.cyan}pnpm add -g @hatchway/cli${c.reset}`);
   }
   console.log();
   console.log(`  ${c.dimGray}If the problem persists, please report it at:${c.reset}`);
-    console.log(`    ${c.purple}https://github.com/codyde/openbuilder/issues${c.reset}`);
+    console.log(`    ${c.purple}https://github.com/codyde/hatchway/issues${c.reset}`);
   console.log();
 }
 
 // Check for quiet mode (used during auto-update to avoid banner spam)
-const isQuietMode = process.env.OPENBUILDER_QUIET_INSTALL === '1';
+const isQuietMode = process.env.HATCHWAY_QUIET_INSTALL === '1';
 
 // Helper to conditionally log (respects quiet mode)
 function log(message) {
@@ -525,7 +525,7 @@ async function main() {
   // Skip banner and header in quiet mode (auto-update) to avoid noise
   if (!isQuietMode) {
     printBanner();
-    console.log(`  ${c.dim}Installing OpenBuilder CLI${c.reset}`);
+    console.log(`  ${c.dim}Installing Hatchway CLI${c.reset}`);
     console.log();
   }
   

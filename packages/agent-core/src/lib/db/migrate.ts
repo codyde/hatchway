@@ -17,7 +17,7 @@ export async function runMigrations(migrationsFolder: string = './drizzle') {
   if (!connectionString) {
     throw new Error(
       'DATABASE_URL is not set. Please configure your database connection:\n' +
-      '  - Run "openbuilder init" to set up a Neon database\n' +
+      '  - Run "hatchway init" to set up a Neon database\n' +
       '  - Or set DATABASE_URL environment variable to your PostgreSQL connection string'
     );
   }

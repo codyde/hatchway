@@ -119,7 +119,7 @@ export function BuildErrorView({
     if (/error|Error|ERR!/i.test(line)) return colors.error;
     if (/warning|warn/i.test(line)) return colors.warning;
     if (/:\d+:\d+/.test(line)) return colors.cyan;
-    if (line.startsWith('─') || line.startsWith('openbuilder:')) return colors.dimGray;
+    if (line.startsWith('─') || line.startsWith('hatchway:')) return colors.dimGray;
     return colors.gray;
   };
 

@@ -14,7 +14,7 @@ export async function databaseCommand() {
 
   if (!monorepoPath) {
     logger.error('Monorepo path not found in config');
-    logger.info('Run "openbuilder init" first to set up the repository');
+    logger.info('Run "hatchway init" first to set up the repository');
     process.exit(1);
   }
 
@@ -28,7 +28,7 @@ export async function databaseCommand() {
     logger.error('Failed to create database');
     logger.log('');
     logger.info('You can manually set a database URL with:');
-    logger.log(`  ${chalk.cyan('openbuilder config set databaseUrl <url>')}`);
+    logger.log(`  ${chalk.cyan('hatchway config set databaseUrl <url>')}`);
     process.exit(1);
   }
 
@@ -50,7 +50,7 @@ export async function databaseCommand() {
     logger.warn('Failed to push database schema');
     logger.log('');
     logger.info('You can try manually:');
-    logger.log(`  ${chalk.cyan('cd apps/openbuilder')}`);
+    logger.log(`  ${chalk.cyan('cd apps/hatchway')}`);
     logger.log(`  ${chalk.cyan('npx drizzle-kit push --config=drizzle.config.ts')}`);
     logger.log('');
     process.exit(1);
@@ -61,6 +61,6 @@ export async function databaseCommand() {
   logger.success('Database setup complete! 🎉');
   logger.log('');
   logger.info('Database is ready for use');
-  logger.info(`You can now run: ${chalk.cyan('openbuilder run')}`);
+  logger.info(`You can now run: ${chalk.cyan('hatchway run')}`);
   logger.log('');
 }

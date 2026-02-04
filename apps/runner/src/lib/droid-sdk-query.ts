@@ -8,12 +8,12 @@
  * Enable by setting agent to 'factory-droid' in build requests.
  */
 
-import { DroidSession } from '@openbuilder/droid-sdk';
-import type { DroidEvent, DroidSessionOptions } from '@openbuilder/droid-sdk';
+import { DroidSession } from '@hatchway/droid-sdk';
+import type { DroidEvent, DroidSessionOptions } from '@hatchway/droid-sdk';
 import * as Sentry from '@sentry/node';
 import { existsSync, mkdirSync } from 'node:fs';
 import { ensureProjectSkills } from './skills.js';
-import { CLAUDE_SYSTEM_PROMPT } from '@openbuilder/agent-core';
+import { CLAUDE_SYSTEM_PROMPT } from '@hatchway/agent-core';
 
 const debugLog = (message: string) => {
   if (process.env.SILENT_MODE !== '1' && process.env.DEBUG_BUILD === '1') {

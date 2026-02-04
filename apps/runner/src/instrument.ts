@@ -31,16 +31,16 @@ Sentry.init({
     /^https?:\/\/localhost:\d+$/,
 
     // Production domains
-    "openbuilder.sh",
-    "openbuilder.app",
-    "openbuilder.up.railway.app",
-    "broker.openbuilder.sh",
-    "broker.openbuilder.app",
+    "hatchway.sh",
+    "hatchway.app",
+    "hatchway.up.railway.app",
+    "broker.hatchway.sh",
+    "broker.hatchway.app",
     "broker.up.railway.app",
 
     // Wildcard patterns for Railway
     /^https?:\/\/.*\.railway\.app/, // Railway deployments
     /^https?:\/\/.*\.up\.railway\.app/, // Railway preview deployments
-    /^https?:\/\/.*\.openbuilder\.app/, // Custom domain subdomains
+    /^https?:\/\/.*\.hatchway\.app/, // Custom domain subdomains
   ],
 });

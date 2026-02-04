@@ -6,23 +6,23 @@ import { colors } from '../theme.js';
  * Each line is padded to exactly the same width for perfect alignment
  */
 export function Banner() {
-  // Full banner lines - OPEN in cyan, BUILDER in purple
+  // Full banner lines - HATCH in cyan, WAY in purple
   // All lines padded to same total width for consistent centering
   const lines = [
-    { open: ' ██████╗ ██████╗ ███████╗███╗   ██╗', builder: '██████╗ ██╗   ██╗██╗██╗     ██████╗ ███████╗██████╗ ' },
-    { open: '██╔═══██╗██╔══██╗██╔════╝████╗  ██║', builder: '██╔══██╗██║   ██║██║██║     ██╔══██╗██╔════╝██╔══██╗' },
-    { open: '██║   ██║██████╔╝█████╗  ██╔██╗ ██║', builder: '██████╔╝██║   ██║██║██║     ██║  ██║█████╗  ██████╔╝' },
-    { open: '██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║', builder: '██╔══██╗██║   ██║██║██║     ██║  ██║██╔══╝  ██╔══██╗' },
-    { open: '╚██████╔╝██║     ███████╗██║ ╚████║', builder: '██████╔╝╚██████╔╝██║███████╗██████╔╝███████╗██║  ██║' },
-    { open: ' ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝', builder: '╚═════╝  ╚═════╝ ╚═╝╚══════╝╚═════╝ ╚══════╝╚═╝  ╚═╝' },
+    { hatch: '██╗  ██╗ █████╗ ████████╗ ██████╗██╗  ██╗', way: '██╗    ██╗ █████╗ ██╗   ██╗' },
+    { hatch: '██║  ██║██╔══██╗╚══██╔══╝██╔════╝██║  ██║', way: '██║    ██║██╔══██╗╚██╗ ██╔╝' },
+    { hatch: '███████║███████║   ██║   ██║     ███████║', way: '██║ █╗ ██║███████║ ╚████╔╝ ' },
+    { hatch: '██╔══██║██╔══██║   ██║   ██║     ██╔══██║', way: '██║███╗██║██╔══██║  ╚██╔╝  ' },
+    { hatch: '██║  ██║██║  ██║   ██║   ╚██████╗██║  ██║', way: '╚███╔███╔╝██║  ██║   ██║   ' },
+    { hatch: '╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝    ╚═════╝╚═╝  ╚═╝', way: ' ╚══╝╚══╝ ╚═╝  ╚═╝   ╚═╝   ' },
   ];
 
   return (
     <Box flexDirection="column" alignItems="center">
       {lines.map((line, index) => (
         <Box key={index}>
-          <Text color={colors.cyan}>{line.open}</Text>
-          <Text color={colors.brightPurple}>{line.builder}</Text>
+          <Text color={colors.cyan}>{line.hatch}</Text>
+          <Text color={colors.brightPurple}>{line.way}</Text>
         </Box>
       ))}
     </Box>

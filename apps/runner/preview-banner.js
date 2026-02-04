@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Quick preview script to see the OpenBuilder banners
+ * Quick preview script to see the Hatchway banners
  * Run with: node preview-banner.js
  */
 
@@ -21,12 +21,12 @@ console.log(colors.white + 'CLI Startup Banner:' + colors.reset);
 console.log(colors.white + '='.repeat(70) + colors.reset);
 
 const startupBanner = `
-${colors.cyan} ██████╗ ██████╗ ███████╗███╗   ██╗${colors.brightPurple}██████╗ ██╗   ██╗██╗██╗     ██████╗ ███████╗██████╗${colors.reset}
-${colors.cyan}██╔═══██╗██╔══██╗██╔════╝████╗  ██║${colors.brightPurple}██╔══██╗██║   ██║██║██║     ██╔══██╗██╔════╝██╔══██╗${colors.reset}
-${colors.cyan}██║   ██║██████╔╝█████╗  ██╔██╗ ██║${colors.brightPurple}██████╔╝██║   ██║██║██║     ██║  ██║█████╗  ██████╔╝${colors.reset}
-${colors.cyan}██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║${colors.brightPurple}██╔══██╗██║   ██║██║██║     ██║  ██║██╔══╝  ██╔══██╗${colors.reset}
-${colors.cyan}╚██████╔╝██║     ███████╗██║ ╚████║${colors.brightPurple}██████╔╝╚██████╔╝██║███████╗██████╔╝███████╗██║  ██║${colors.reset}
-${colors.cyan} ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝${colors.brightPurple}╚═════╝  ╚═════╝ ╚═╝╚══════╝╚═════╝ ╚══════╝╚═╝  ╚═╝${colors.reset}
+${colors.cyan}██╗  ██╗ █████╗ ████████╗ ██████╗██╗  ██╗${colors.brightPurple}██╗    ██╗ █████╗ ██╗   ██╗${colors.reset}
+${colors.cyan}██║  ██║██╔══██╗╚══██╔══╝██╔════╝██║  ██║${colors.brightPurple}██║    ██║██╔══██╗╚██╗ ██╔╝${colors.reset}
+${colors.cyan}███████║███████║   ██║   ██║     ███████║${colors.brightPurple}██║ █╗ ██║███████║ ╚████╔╝ ${colors.reset}
+${colors.cyan}██╔══██║██╔══██║   ██║   ██║     ██╔══██║${colors.brightPurple}██║███╗██║██╔══██║  ╚██╔╝  ${colors.reset}
+${colors.cyan}██║  ██║██║  ██║   ██║   ╚██████╗██║  ██║${colors.brightPurple}╚███╔███╔╝██║  ██║   ██║   ${colors.reset}
+${colors.cyan}╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝    ╚═════╝╚═╝  ╚═╝${colors.brightPurple} ╚══╝╚══╝ ╚═╝  ╚═╝   ╚═╝   ${colors.reset}
 `;
 
 console.log(startupBanner);
@@ -38,30 +38,30 @@ console.log(colors.white + '='.repeat(80) + colors.reset);
 console.log('');
 
 const setupCompleteBanner = `
-${colors.cyan} ██████╗ ██████╗ ███████╗███╗   ██╗${colors.brightPurple}██████╗ ██╗   ██╗██╗██╗     ██████╗ ███████╗██████╗${colors.reset}
-${colors.cyan}██╔═══██╗██╔══██╗██╔════╝████╗  ██║${colors.brightPurple}██╔══██╗██║   ██║██║██║     ██╔══██╗██╔════╝██╔══██╗${colors.reset}
-${colors.cyan}██║   ██║██████╔╝█████╗  ██╔██╗ ██║${colors.brightPurple}██████╔╝██║   ██║██║██║     ██║  ██║█████╗  ██████╔╝${colors.reset}
-${colors.cyan}██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║${colors.brightPurple}██╔══██╗██║   ██║██║██║     ██║  ██║██╔══╝  ██╔══██╗${colors.reset}
-${colors.cyan}╚██████╔╝██║     ███████╗██║ ╚████║${colors.brightPurple}██████╔╝╚██████╔╝██║███████╗██████╔╝███████╗██║  ██║${colors.reset}
-${colors.cyan} ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝${colors.brightPurple}╚═════╝  ╚═════╝ ╚═╝╚══════╝╚═════╝ ╚══════╝╚═╝  ╚═╝${colors.reset}
-${colors.white}                              Setup is complete! 🎉${colors.reset}
+${colors.cyan}██╗  ██╗ █████╗ ████████╗ ██████╗██╗  ██╗${colors.brightPurple}██╗    ██╗ █████╗ ██╗   ██╗${colors.reset}
+${colors.cyan}██║  ██║██╔══██╗╚══██╔══╝██╔════╝██║  ██║${colors.brightPurple}██║    ██║██╔══██╗╚██╗ ██╔╝${colors.reset}
+${colors.cyan}███████║███████║   ██║   ██║     ███████║${colors.brightPurple}██║ █╗ ██║███████║ ╚████╔╝ ${colors.reset}
+${colors.cyan}██╔══██║██╔══██║   ██║   ██║     ██╔══██║${colors.brightPurple}██║███╗██║██╔══██║  ╚██╔╝  ${colors.reset}
+${colors.cyan}██║  ██║██║  ██║   ██║   ╚██████╗██║  ██║${colors.brightPurple}╚███╔███╔╝██║  ██║   ██║   ${colors.reset}
+${colors.cyan}╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝    ╚═════╝╚═╝  ╚═╝${colors.brightPurple} ╚══╝╚══╝ ╚═╝  ╚═╝   ╚═╝   ${colors.reset}
+${colors.white}                        Setup is complete! 🎉${colors.reset}
 `;
 
 console.log(setupCompleteBanner);
 
 // Show sample info output
-console.log(colors.cyan + 'ℹ' + colors.reset + ' Config file: ' + colors.cyan + '~/.config/openbuilder/config.json' + colors.reset);
-console.log(colors.cyan + 'ℹ' + colors.reset + ' Workspace: ' + colors.cyan + '~/openbuilder-workspace' + colors.reset);
-console.log(colors.cyan + 'ℹ' + colors.reset + ' Repository: ' + colors.cyan + '/Users/username/openbuilder' + colors.reset);
+console.log(colors.cyan + 'ℹ' + colors.reset + ' Config file: ' + colors.cyan + '~/.config/hatchway/config.json' + colors.reset);
+console.log(colors.cyan + 'ℹ' + colors.reset + ' Workspace: ' + colors.cyan + '~/hatchway-workspace' + colors.reset);
+console.log(colors.cyan + 'ℹ' + colors.reset + ' Repository: ' + colors.cyan + '/Users/username/hatchway' + colors.reset);
 console.log('');
 
 // Show next steps
 console.log(colors.cyan + 'ℹ' + colors.reset + ' Next steps:');
-console.log('  1. Run ' + colors.cyan + 'openbuilder run' + colors.reset + ' to start the full stack');
-console.log('  2. Or ' + colors.cyan + 'openbuilder --runner' + colors.reset + ' for runner only');
+console.log('  1. Run ' + colors.cyan + 'hatchway run' + colors.reset + ' to start the full stack');
+console.log('  2. Or ' + colors.cyan + 'hatchway --runner' + colors.reset + ' for runner only');
 console.log('');
 console.log('');
 
 // Show help reference
-console.log(colors.cyan + 'ℹ' + colors.reset + ' Run ' + colors.cyan + 'openbuilder --help' + colors.reset + ' to see all available commands and options');
+console.log(colors.cyan + 'ℹ' + colors.reset + ' Run ' + colors.cyan + 'hatchway --help' + colors.reset + ' to see all available commands and options');
 console.log('\n');

@@ -1,6 +1,6 @@
 {
   "version": "0.1.0",
-  "workspace": "~/openbuilder-projects",
+  "workspace": "~/hatchway-projects",
   "apiUrl": "http://localhost:3000",
   "server": {
     "wsUrl": "ws://localhost:3000/ws/runner",

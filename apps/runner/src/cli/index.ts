@@ -17,7 +17,7 @@
 // IMPORTANT: Ensure vendor packages are extracted before any imports
 // pnpm postinstall doesn't always run reliably for global installs from URLs
 //
-// NOTE: @openbuilder/agent-core is bundled directly into dist/ by tsup,
+// NOTE: @hatchway/agent-core is bundled directly into dist/ by tsup,
 // so we don't need to check for it. But vendor packages (Sentry, etc.) still
 // need to be installed from the vendor/ tarballs.
 import { existsSync, readFileSync } from 'node:fs';
@@ -47,13 +47,13 @@ const packageRoot = findPackageRoot(__dirname);
 
 // Check if running in development mode (linked via pnpm/npm link)
 // Skip vendor install if we're in the monorepo - dependencies are handled by pnpm
-const isLinkedDevelopment = packageRoot.includes('/openbuilder/apps/runner');
+const isLinkedDevelopment = packageRoot.includes('/hatchway/apps/runner');
 
 // Only run vendor install for production global installs
 if (!isLinkedDevelopment) {
   // Check if Sentry packages are missing and extract from vendor if needed
   // (agent-core is bundled by tsup, but Sentry packages come from vendor tarballs)
-  const nodeModulesDir = dirname(packageRoot); // Go up from package to node_modules/@openbuilder
+  const nodeModulesDir = dirname(packageRoot); // Go up from package to node_modules/@hatchway
   const sentryNodePath = join(nodeModulesDir, "..", "@sentry", "node");
 
   if (!existsSync(sentryNodePath)) {
@@ -71,7 +71,7 @@ if (!isLinkedDevelopment) {
   }
 }
 
-// Sentry instrumentation is loaded via --import flag in bin/openbuilder.js wrapper
+// Sentry instrumentation is loaded via --import flag in bin/hatchway.js wrapper
 // This ensures instrumentation happens before any ESM module resolution
 
 import { Command } from 'commander';
@@ -97,10 +97,10 @@ export const shutdownHandler = setupShutdownHandler({
 const args = process.argv.slice(2);
 const isInitWithYes = args[0] === 'init' && (args.includes('-y') || args.includes('--yes') || args.includes('--non-interactive'));
 const isNoArgs = args.length === 0 || (args.length === 1 && args[0] === '--debug');
-const isRunCommand = args[0] === 'run'; // `openbuilder run` uses TUI Dashboard
-const isRunnerCommand = args[0] === 'runner' && !args.includes('--no-tui'); // `openbuilder runner` uses TUI Dashboard (unless --no-tui)
+const isRunCommand = args[0] === 'run'; // `hatchway run` uses TUI Dashboard
+const isRunnerCommand = args[0] === 'runner' && !args.includes('--no-tui'); // `hatchway runner` uses TUI Dashboard (unless --no-tui)
 const isVersionCommand = args.includes('--version') || args.includes('-V'); // Skip banner for version output
-const isSkipBanner = process.env.OPENBUILDER_SKIP_BANNER === '1'; // Skip banner after auto-update restart
+const isSkipBanner = process.env.HATCHWAY_SKIP_BANNER === '1'; // Skip banner after auto-update restart
 const isTUIMode = isInitWithYes || isNoArgs || isRunCommand || isRunnerCommand;
 const isSilentMode = isTUIMode || isVersionCommand || isSkipBanner;
 
@@ -114,7 +114,7 @@ if (isSilentMode) {
 // All modes (TUI and CLI): full auto-update with restart
 // For version mode: skip entirely - just show version
 let willAutoUpdate = false;
-if (!process.env.OPENBUILDER_SKIP_UPDATE_CHECK && !isVersionCommand) {
+if (!process.env.HATCHWAY_SKIP_UPDATE_CHECK && !isVersionCommand) {
   const { checkAndAutoUpdate } = await import('./utils/auto-update.js');
   
   try {
@@ -141,8 +141,8 @@ if (!process.env.OPENBUILDER_SKIP_UPDATE_CHECK && !isVersionCommand) {
 const program = new Command();
 
 program
-  .name('openbuilder')
-  .description('OpenBuilder CLI - AI App Builder')
+  .name('hatchway')
+  .description('Hatchway CLI - AI App Builder')
   .version(packageJson.version)
   .option('--runner', 'Start runner only (connect to remote server)')
   .option('--debug', 'Enable debug mode with verbose error output')
@@ -224,9 +224,9 @@ program
 
 program
   .command('runner')
-  .description('Start runner only (connect to OpenBuilder server)')
-  .option('-u, --url <url>', 'OpenBuilder server URL (default: https://openbuilder.sh)')
-  .option('-w, --workspace <path>', 'Workspace directory (default: ~/openbuilder-workspace)')
+  .description('Start runner only (connect to Hatchway server)')
+  .option('-u, --url <url>', 'Hatchway server URL (default: https://hatchway.sh)')
+  .option('-w, --workspace <path>', 'Workspace directory (default: ~/hatchway-workspace)')
   .option('-i, --runner-id <id>', 'Runner identifier (default: system username)')
   .option('-s, --secret <secret>', 'Shared secret for authentication (required)')
   .option('-b, --broker <url>', 'WebSocket URL override (advanced, inferred from --url)')
@@ -325,8 +325,8 @@ program
 
 program
   .command('login')
-  .description('Authenticate with OpenBuilder via OAuth (GitHub/Sentry)')
-  .option('-u, --url <url>', 'OpenBuilder server URL (default: https://openbuilder.sh)')
+  .description('Authenticate with Hatchway via OAuth (GitHub/Sentry)')
+  .option('-u, --url <url>', 'Hatchway server URL (default: https://hatchway.sh)')
   .option('-f, --force', 'Force re-authentication even if already logged in')
   .action(async (options) => {
     try {

@@ -1,5 +1,5 @@
 /**
- * Main TUI entry point - shown when running `openbuilder` without arguments
+ * Main TUI entry point - shown when running `hatchway` without arguments
  * Implements a multi-screen flow: Mode Select -> Local/Runner Mode -> Config/Start
  */
 
@@ -103,7 +103,7 @@ function App({
     const { execSync } = await import('child_process');
     try {
       execSync(
-        `git ls-remote --exit-code --heads https://github.com/codyde/openbuilder.git ${config.branch}`,
+        `git ls-remote --exit-code --heads https://github.com/codyde/hatchway.git ${config.branch}`,
         { stdio: 'pipe' }
       );
       // Branch exists, proceed with init
@@ -151,7 +151,7 @@ function App({
         <ConfigFormScreen
           initialConfig={{
             branch: state.screen.lastBranch || 'main',
-            workspace: state.existingWorkspace || join(homedir(), 'openbuilder-workspace'),
+            workspace: state.existingWorkspace || join(homedir(), 'hatchway-workspace'),
             useNeon: true,
           }}
           onSubmit={handleConfigSubmit}
@@ -292,7 +292,7 @@ async function startRunner(config: RunnerConfig): Promise<void> {
     });
   }
 
-  console.log('\n  Starting OpenBuilder Runner...\n');
+  console.log('\n  Starting Hatchway Runner...\n');
   console.log(`  Runner ID: ${config.runnerId}`);
   console.log('  Connecting to remote server...\n');
 
@@ -307,7 +307,7 @@ async function startRunner(config: RunnerConfig): Promise<void> {
  * Start local mode (full stack)
  */
 async function startLocalMode(): Promise<void> {
-  console.log('\n  Starting OpenBuilder in Local Mode...\n');
+  console.log('\n  Starting Hatchway in Local Mode...\n');
 
   const { startCommand } = await import('./start.js');
   await startCommand({});

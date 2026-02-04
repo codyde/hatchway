@@ -16,16 +16,16 @@ import * as os from 'os';
 import * as path from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import * as Sentry from '@sentry/node';
-import type { AgentId, ClaudeModelId } from '@openbuilder/agent-core/types/agent';
-import type { AppliedTag } from '@openbuilder/agent-core/types/tags';
+import type { AgentId, ClaudeModelId } from '@hatchway/agent-core/types/agent';
+import type { AppliedTag } from '@hatchway/agent-core/types/tags';
 import {
   ProjectMetadataSchema,
   ProjectNamingSchema,
   TemplateAnalysisSchema,
-} from '@openbuilder/agent-core';
+} from '@hatchway/agent-core';
 import { getAllTemplates, type Template } from './templates/config.js';
-import { TAG_DEFINITIONS } from '@openbuilder/agent-core/config/tags';
-import type { RunnerEvent } from '@openbuilder/agent-core';
+import { TAG_DEFINITIONS } from '@hatchway/agent-core/config/tags';
+import type { RunnerEvent } from '@hatchway/agent-core';
 
 // Map model IDs to Claude Agent SDK model names
 const MODEL_MAP: Record<string, string> = {

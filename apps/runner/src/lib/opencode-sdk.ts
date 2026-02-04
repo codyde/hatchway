@@ -19,7 +19,7 @@ import {
   DEFAULT_OPENCODE_MODEL_ID,
   normalizeModelId,
   parseModelId,
-} from '@openbuilder/agent-core';
+} from '@hatchway/agent-core';
 import { ensureProjectSkills } from './skills.js';
 
 // Debug logging helper
@@ -68,7 +68,7 @@ function getOpenCodeUrl(): string {
   if (url) return url;
   
   // Default to localhost in development/local mode
-  if (process.env.OPENBUILDER_LOCAL_MODE === 'true' || process.env.NODE_ENV === 'development') {
+  if (process.env.HATCHWAY_LOCAL_MODE === 'true' || process.env.NODE_ENV === 'development') {
     return 'http://localhost:4096';
   }
   
@@ -80,7 +80,7 @@ function getOpenCodeUrl(): string {
  */
 function getAuthToken(): string | null {
   // Try runner key first
-  const runnerKey = process.env.OPENBUILDER_RUNNER_KEY;
+  const runnerKey = process.env.HATCHWAY_RUNNER_KEY;
   if (runnerKey) return runnerKey;
   
   // Fall back to shared secret
@@ -88,7 +88,7 @@ function getAuthToken(): string | null {
   if (sharedSecret) return sharedSecret;
   
   // Local mode doesn't require auth
-  if (process.env.OPENBUILDER_LOCAL_MODE === 'true') {
+  if (process.env.HATCHWAY_LOCAL_MODE === 'true') {
     return null;
   }
   

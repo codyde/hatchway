@@ -14,7 +14,7 @@ interface ConfigSummaryProps {
 /**
  * Configuration summary display
  * ───────────────────────────────────
- *  Workspace   ~/openbuilder-workspace
+ *  Workspace   ~/hatchway-workspace
  *  Server      http://localhost:3000
  *  Runner      local
  * ───────────────────────────────────

@@ -1,6 +1,6 @@
 /**
- * Auto-update utility for OpenBuilder CLI
- * 
+ * Auto-update utility for Hatchway CLI
+ *
  * Checks GitHub Releases for newer versions and automatically
  * updates both:
  * 1. The CLI itself (globally installed npm package)
@@ -15,13 +15,13 @@ import pc from 'picocolors';
 import { configManager } from './config-manager.js';
 
 // GitHub API endpoint for releases
-const GITHUB_RELEASES_URL = 'https://api.github.com/repos/codyde/openbuilder/releases/latest';
+const GITHUB_RELEASES_URL = 'https://api.github.com/repos/codyde/hatchway/releases/latest';
 
 // Install command for CLI
-const INSTALL_COMMAND = 'curl -fsSL https://openbuilder.sh/install | bash';
+const INSTALL_COMMAND = 'curl -fsSL https://hatchway.sh/install | bash';
 
 // Cache settings
-const CACHE_DIR = join(homedir(), '.config', 'openbuilder');
+const CACHE_DIR = join(homedir(), '.config', 'hatchway');
 const CACHE_FILE = join(CACHE_DIR, 'update-cache.json');
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -73,7 +73,7 @@ async function fetchLatestVersion(): Promise<string | null> {
     const response = await fetch(GITHUB_RELEASES_URL, {
       headers: {
         'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'OpenBuilder-CLI-AutoUpdate',
+        'User-Agent': 'Hatchway-CLI-AutoUpdate',
       },
       signal: controller.signal,
     });
@@ -124,7 +124,7 @@ function performCLIUpdate(): boolean {
       shell: '/bin/bash',
       env: {
         ...process.env,
-        OPENBUILDER_QUIET_INSTALL: '1', // Suppress banner in installer
+        HATCHWAY_QUIET_INSTALL: '1', // Suppress banner in installer
       },
     });
     return true;
@@ -135,7 +135,7 @@ function performCLIUpdate(): boolean {
 
 /**
  * Check if the app/monorepo needs upgrading and perform the upgrade
- * This updates the local OpenBuilder installation that runs the web app
+ * This updates the local Hatchway installation that runs the web app
  */
 function performAppUpgrade(): boolean {
   const config = configManager.get();
@@ -152,13 +152,13 @@ function performAppUpgrade(): boolean {
   console.log();
 
   try {
-    // Run openbuilder upgrade --force to upgrade the monorepo
+    // Run hatchway upgrade --force to upgrade the monorepo
     // Use --force to skip prompts since we're in auto-update mode
-    const result = spawnSync('openbuilder', ['upgrade', '--force'], {
+    const result = spawnSync('hatchway', ['upgrade', '--force'], {
       stdio: 'inherit',
       env: {
         ...process.env,
-        OPENBUILDER_SKIP_UPDATE_CHECK: '1', // Don't re-check for CLI updates
+        HATCHWAY_SKIP_UPDATE_CHECK: '1', // Don't re-check for CLI updates
       },
       shell: true,
     });
@@ -176,23 +176,23 @@ function relaunchCLI(): void {
   const args = process.argv.slice(2);
   
   try {
-    // Get the actual path to openbuilder to avoid shell hash caching issues
+    // Get the actual path to hatchway to avoid shell hash caching issues
     // This ensures we run the newly installed version, not a cached path
-    let openbuilderPath = 'openbuilder';
+    let hatchwayPath = 'hatchway';
     try {
       // Use 'command -v' to get the actual path, bypassing shell hash
-      openbuilderPath = execSync('command -v openbuilder', { encoding: 'utf-8' }).trim();
+      hatchwayPath = execSync('command -v hatchway', { encoding: 'utf-8' }).trim();
     } catch {
-      // Fallback to just 'openbuilder' if command -v fails
+      // Fallback to just 'hatchway' if command -v fails
     }
-    
+
     // Use spawnSync with the explicit path to ensure we get the new version
-    const result = spawnSync(openbuilderPath, args, {
+    const result = spawnSync(hatchwayPath, args, {
       stdio: 'inherit',
-      env: { 
-        ...process.env, 
-        OPENBUILDER_SKIP_UPDATE_CHECK: '1', // Prevent update loop
-        OPENBUILDER_SKIP_BANNER: '1', // Suppress banner after restart (already shown before update)
+      env: {
+        ...process.env,
+        HATCHWAY_SKIP_UPDATE_CHECK: '1', // Prevent update loop
+        HATCHWAY_SKIP_BANNER: '1', // Suppress banner after restart (already shown before update)
       },
       // Don't use shell: true to avoid shell hash caching
     });
@@ -218,7 +218,7 @@ function relaunchCLI(): void {
  */
 export async function checkAndAutoUpdate(currentVersion: string): Promise<boolean> {
   // Skip if update check is disabled via env var
-  if (process.env.OPENBUILDER_NO_UPDATE === '1' || process.env.OPENBUILDER_SKIP_UPDATE_CHECK === '1') {
+  if (process.env.HATCHWAY_NO_UPDATE === '1' || process.env.HATCHWAY_SKIP_UPDATE_CHECK === '1') {
     // But check if we have a pending app upgrade from a previous CLI update
     const cache = readUpdateCache();
     if (cache?.pendingAppUpgrade) {
@@ -232,7 +232,7 @@ export async function checkAndAutoUpdate(currentVersion: string): Promise<boolea
         saveUpdateCache({ ...cache, pendingAppUpgrade: false });
         console.log(`  ${pc.green('✓')} ${pc.bold('App upgrade complete!')}`);
       } else {
-        console.log(`  ${pc.yellow('⚠')} ${pc.dim('App upgrade failed. Run manually:')} ${pc.cyan('openbuilder upgrade')}`);
+        console.log(`  ${pc.yellow('⚠')} ${pc.dim('App upgrade failed. Run manually:')} ${pc.cyan('hatchway upgrade')}`);
       }
       console.log();
     }
@@ -293,7 +293,7 @@ export async function checkAndAutoUpdate(currentVersion: string): Promise<boolea
     // CLI update failed, continue with current version
     console.log();
     console.log(`  ${pc.yellow('⚠')} ${pc.dim('CLI update failed. Continuing with current version.')}`);
-    console.log(`  ${pc.dim('You can manually update with:')} ${pc.cyan('curl -fsSL https://openbuilder.sh/install | bash')}`);
+    console.log(`  ${pc.dim('You can manually update with:')} ${pc.cyan('curl -fsSL https://hatchway.sh/install | bash')}`);
     console.log();
     return false;
   }
@@ -319,7 +319,7 @@ export async function checkAndAutoUpdate(currentVersion: string): Promise<boolea
   console.log(`  ${pc.yellow('⚠')} ${pc.bold('Please restart your terminal')} or run:`);
   console.log(`     ${pc.cyan('hash -r')}  ${pc.dim('(bash/zsh)')}`);
   console.log();
-  console.log(`  ${pc.dim('Then run')} ${pc.cyan('openbuilder')} ${pc.dim('again.')}`);
+  console.log(`  ${pc.dim('Then run')} ${pc.cyan('hatchway')} ${pc.dim('again.')}`);
   console.log();
   
   // Exit - user needs to restart terminal to pick up new version
@@ -339,7 +339,7 @@ export async function checkForUpdate(currentVersion: string): Promise<{
   updateAvailable: boolean;
 } | null> {
   // Skip if update check is disabled via env var
-  if (process.env.OPENBUILDER_NO_UPDATE === '1' || process.env.OPENBUILDER_SKIP_UPDATE_CHECK === '1') {
+  if (process.env.HATCHWAY_NO_UPDATE === '1' || process.env.HATCHWAY_SKIP_UPDATE_CHECK === '1') {
     return null;
   }
 

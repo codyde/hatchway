@@ -5,7 +5,7 @@
 ### 1. Create Service
 ```bash
 # In Railway dashboard:
-+ New Service → GitHub Repo → openbuilder
++ New Service → GitHub Repo → hatchway
 ```
 
 ### 2. Configure Build
@@ -55,7 +55,7 @@ railway logs --service runner
 ```
 
 ### 7. Test in UI
-- Open OpenBuilder web app
+- Open Hatchway web app
 - Sidebar footer → Runner dropdown
 - Should show: `🟢 railway-runner-prod`
 - Create a test project → Should build successfully!

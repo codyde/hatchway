@@ -16,11 +16,11 @@ interface HorizontalSelectorProps {
 
 /**
  * Horizontal card selector component
- * 
+ *
  * ┌─────────────────┐     ┌─────────────────┐
  * │   Local Mode    │     │   Runner Mode   │
  * │                 │     │                 │
- * │ Run OpenBuilder  │     │ Connect to a    │
+ * │ Run Hatchway   │     │ Connect to a    │
  * │ locally         │     │ remote server   │
  * └─────────────────┘     └─────────────────┘
  *       [SELECTED]

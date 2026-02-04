@@ -14,7 +14,7 @@ function parseFlag(value?: string | null): boolean | null {
 function detectVerboseFromEnv(): boolean | null {
   if (typeof process === 'undefined') return null;
   const candidates = [
-    process.env.OPENBUILDER_VERBOSE_LOGS,
+    process.env.HATCHWAY_VERBOSE_LOGS,
     process.env.VERBOSE_LOGS,
     process.env.VERBOSE,
   ];

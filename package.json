@@ -1,31 +1,31 @@
 {
-  "name": "openbuilder-monorepo",
+  "name": "hatchway-monorepo",
   "version": "0.50.48",
   "description": "AI-powered project generation platform with Claude AI and remote runner architecture",
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/codyde/openbuilder.git"
+    "url": "https://github.com/codyde/hatchway.git"
   },
   "author": "Cody De Arkland",
   "license": "MIT",
   "scripts": {
-    "dev": "turbo run dev --filter=openbuilder",
+    "dev": "turbo run dev --filter=hatchway",
     "dev:all": "turbo run dev",
-    "dev:opencode": "turbo run dev --filter=@openbuilder/opencode-service",
-    "dev:full": "turbo run dev --filter=openbuilder --filter=@openbuilder/opencode-service --filter=@openbuilder/cli",
-    "build": "turbo run build --filter=openbuilder",
+    "dev:opencode": "turbo run dev --filter=@hatchway/opencode-service",
+    "dev:full": "turbo run dev --filter=hatchway --filter=@hatchway/opencode-service --filter=@hatchway/cli",
+    "build": "turbo run build --filter=hatchway",
     "build:all": "turbo run build",
-    "build:cli": "turbo run build --filter=@openbuilder/cli",
-    "build:agent-core": "turbo run build --filter=@openbuilder/agent-core",
-    "build:opencode": "turbo run build --filter=@openbuilder/opencode-service",
-    "start": "turbo run start --filter=openbuilder",
+    "build:cli": "turbo run build --filter=@hatchway/cli",
+    "build:agent-core": "turbo run build --filter=@hatchway/agent-core",
+    "build:opencode": "turbo run build --filter=@hatchway/opencode-service",
+    "start": "turbo run start --filter=hatchway",
     "start:all": "turbo run start",
-    "start:opencode": "turbo run start --filter=@openbuilder/opencode-service",
+    "start:opencode": "turbo run start --filter=@hatchway/opencode-service",
     "lint": "turbo run lint",
-    "runner": "turbo run dev --filter=@openbuilder/cli",
-    "local:prod": "turbo run build && turbo run start --filter=openbuilder"
+    "runner": "turbo run dev --filter=@hatchway/cli",
+    "local:prod": "turbo run build && turbo run start --filter=hatchway"
   },
   "devDependencies": {
     "turbo": "^2.5.8"

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { AgentId, ClaudeModelId } from '@openbuilder/agent-core/types/agent';
-import { resolveAgentStrategy } from '@openbuilder/agent-core/lib/agents';
+import type { AgentId, ClaudeModelId } from '@hatchway/agent-core/types/agent';
+import { resolveAgentStrategy } from '@hatchway/agent-core/lib/agents';
 import { ensureProjectSkills } from '../skills.js';
 
 // Debug logging helper - suppressed in TUI mode (SILENT_MODE=1)

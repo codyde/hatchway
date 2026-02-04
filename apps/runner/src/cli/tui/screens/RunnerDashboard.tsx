@@ -54,8 +54,8 @@ export function RunnerDashboard({ config, onQuit }: RunnerDashboardProps) {
   // Track if we've opened browser on first connection
   const hasOpenedBrowserRef = useRef(false);
 
-  // Get the dashboard URL (use apiUrl if provided, otherwise default to openbuilder.sh)
-  const dashboardUrl = config.apiUrl || 'https://openbuilder.sh';
+  // Get the dashboard URL (use apiUrl if provided, otherwise default to hatchway.sh)
+  const dashboardUrl = config.apiUrl || 'https://hatchway.sh';
 
   // Open browser handler
   const handleOpenBrowser = useCallback(() => {
@@ -173,7 +173,7 @@ export function RunnerDashboard({ config, onQuit }: RunnerDashboardProps) {
   const showBuildPanel = buildState.currentBuild !== null;
 
   // Check for available update (set by auto-update check in index.ts)
-  const updateAvailable = process.env.OPENBUILDER_UPDATE_AVAILABLE;
+  const updateAvailable = process.env.HATCHWAY_UPDATE_AVAILABLE;
 
   return (
     <Box flexDirection="column" height={terminalHeight} width={terminalWidth}>
@@ -186,7 +186,7 @@ export function RunnerDashboard({ config, onQuit }: RunnerDashboardProps) {
           <Text color={colors.cyan}>⬆ Update available: </Text>
           <Text color={colors.success}>{updateAvailable}</Text>
           <Text color={colors.dimGray}> — Run </Text>
-          <Text color={colors.cyan}>openbuilder upgrade</Text>
+          <Text color={colors.cyan}>hatchway upgrade</Text>
           <Text color={colors.dimGray}> to update</Text>
         </Box>
       )}

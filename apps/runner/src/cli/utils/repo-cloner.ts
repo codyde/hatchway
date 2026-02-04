@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { logger } from './logger.js';
 import { spinner } from './spinner.js';
 
-const DEFAULT_REPO_URL = 'https://github.com/codyde/openbuilder.git';
-const DEFAULT_CLONE_PATH = join(process.cwd(), 'openbuilder'); // Current directory + /openbuilder
+const DEFAULT_REPO_URL = 'https://github.com/codyde/hatchway.git';
+const DEFAULT_CLONE_PATH = join(process.cwd(), 'hatchway'); // Current directory + /hatchway
 
 export interface CloneOptions {
   repoUrl?: string;
@@ -16,7 +16,7 @@ export interface CloneOptions {
 }
 
 /**
- * Clone the OpenBuilder repository
+ * Clone the Hatchway repository
  */
 export async function cloneRepository(options: CloneOptions = {}): Promise<string> {
   const repoUrl = options.repoUrl || DEFAULT_REPO_URL;
@@ -184,7 +184,7 @@ export async function buildAgentCore(repoPath: string, silent: boolean = false):
   }
 
   return new Promise((resolve, reject) => {
-    const proc = spawn('pnpm', ['--filter', '@openbuilder/agent-core', 'build'], {
+    const proc = spawn('pnpm', ['--filter', '@hatchway/agent-core', 'build'], {
       cwd: repoPath,
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,

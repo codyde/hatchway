@@ -6,8 +6,8 @@
 import { HMR_PROXY_SCRIPT } from './hmr-proxy-script';
 
 // Check if WebSocket proxy is enabled (from env or parent window)
-const USE_WS_PROXY = typeof window !== 'undefined' && 
-  (window as any).__OPENBUILDER_USE_WS_PROXY === true;
+const USE_WS_PROXY = typeof window !== 'undefined' &&
+  (window as any).__HATCHWAY_USE_WS_PROXY === true;
 
 export const SELECTION_SCRIPT = `
 (function() {
@@ -35,7 +35,7 @@ export const SELECTION_SCRIPT = `
 
       return '/api/projects/' + projectId + '/proxy?path=';
     } catch (error) {
-      console.warn('⚠️ [OpenBuilder CSS] Unable to derive proxy prefix:', error);
+      console.warn('⚠️ [Hatchway CSS] Unable to derive proxy prefix:', error);
       return null;
     }
   }
@@ -68,7 +68,7 @@ export const SELECTION_SCRIPT = `
       var proxiedHref = proxyPrefix + encodeURIComponent(trimmed);
       if (link.getAttribute('href') !== proxiedHref) {
         link.setAttribute('href', proxiedHref);
-        console.log('🎨 [OpenBuilder CSS] rewrote stylesheet href to proxy:', proxiedHref);
+        console.log('🎨 [Hatchway CSS] rewrote stylesheet href to proxy:', proxiedHref);
         return true;
       }
     }
@@ -84,7 +84,7 @@ export const SELECTION_SCRIPT = `
     const logLink = (link, phase) => {
       if (!link) return;
       const href = link.getAttribute('href') || '(no href)';
-      console.log('🎨 [OpenBuilder CSS]', phase + ' stylesheet:', href);
+      console.log('🎨 [Hatchway CSS]', phase + ' stylesheet:', href);
     };
 
     const logStyle = (style, phase) => {
@@ -93,7 +93,7 @@ export const SELECTION_SCRIPT = `
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, 140);
-      console.log('🎨 [OpenBuilder CSS]', phase + ' inline style', sample);
+      console.log('🎨 [Hatchway CSS]', phase + ' inline style', sample);
     };
 
     const attachLinkListeners = (link, phase) => {
@@ -151,7 +151,7 @@ export const SELECTION_SCRIPT = `
         observer.observe(head, { childList: true, subtree: true });
       }
     } catch (e) {
-      console.warn('⚠️ [OpenBuilder CSS] Failed to observe stylesheet mutations:', e);
+      console.warn('⚠️ [Hatchway CSS] Failed to observe stylesheet mutations:', e);
     }
 
     // Log existing stylesheet/link elements when script runs
@@ -188,7 +188,7 @@ export const SELECTION_SCRIPT = `
     if (highlightOverlay) return highlightOverlay;
 
     const overlay = document.createElement('div');
-    overlay.id = '__openbuilder-highlight';
+    overlay.id = '__hatchway-highlight';
     overlay.style.cssText = \`
       position: absolute;
       pointer-events: none;
@@ -374,7 +374,7 @@ export const SELECTION_SCRIPT = `
 
     // Send to parent window
     window.parent.postMessage({
-      type: 'openbuilder:element-selected',
+      type: 'hatchway:element-selected',
       data,
     }, '*');
 
@@ -444,13 +444,13 @@ export const SELECTION_SCRIPT = `
 
   // Listen for activation/deactivation from parent
   window.addEventListener('message', (e) => {
-    if (e.data.type === 'openbuilder:toggle-selection-mode') {
+    if (e.data.type === 'hatchway:toggle-selection-mode') {
       setInspectorActive(e.data.enabled);
     }
   });
 
   // Announce ready to parent
-  window.parent.postMessage({ type: 'openbuilder:ready' }, '*');
+  window.parent.postMessage({ type: 'hatchway:ready' }, '*');
 })();
 `;
 
@@ -478,7 +478,7 @@ export function injectSelectionScript(
     }
 
     // Check if script already injected
-    if (iframeDoc.getElementById('__openbuilder-selection-script')) {
+    if (iframeDoc.getElementById('__hatchway-selection-script')) {
       console.log('⚠️  Selection script already injected');
       return true;
     }
@@ -486,9 +486,9 @@ export function injectSelectionScript(
     // Inject HMR proxy script FIRST (if enabled) - before any other scripts run
     // This ensures WebSocket is overridden before Vite's client script loads
     if (options?.enableHmrProxy) {
-      if (!iframeDoc.getElementById('__openbuilder-hmr-proxy-script')) {
+      if (!iframeDoc.getElementById('__hatchway-hmr-proxy-script')) {
         const hmrScript = iframeDoc.createElement('script');
-        hmrScript.id = '__openbuilder-hmr-proxy-script';
+        hmrScript.id = '__hatchway-hmr-proxy-script';
         hmrScript.textContent = HMR_PROXY_SCRIPT;
         // Inject at HEAD start to run before other scripts
         if (iframeDoc.head) {
@@ -502,7 +502,7 @@ export function injectSelectionScript(
 
     // Create and inject selection script element
     const script = iframeDoc.createElement('script');
-    script.id = '__openbuilder-selection-script';
+    script.id = '__hatchway-selection-script';
     script.textContent = SELECTION_SCRIPT;
     iframeDoc.body.appendChild(script);
 
@@ -530,7 +530,7 @@ export function toggleSelectionMode(iframe: HTMLIFrameElement, enabled: boolean)
   }
 
   iframeWindow.postMessage({
-    type: 'openbuilder:toggle-selection-mode',
+    type: 'hatchway:toggle-selection-mode',
     enabled,
   }, '*');
 }

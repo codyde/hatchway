@@ -1,5 +1,5 @@
 /**
- * Rollup configuration for @openbuilder/cli
+ * Rollup configuration for @hatchway/cli
  * Bundles the CLI with React included to prevent multiple instances issue with ink
  */
 import { nodeResolve } from '@rollup/plugin-node-resolve';
@@ -88,8 +88,8 @@ function isExternal(id) {
     if (id.startsWith(ext + '/')) return true;
   }
   
-  // Never externalize @openbuilder/agent-core - we bundle it
-  if (id.startsWith('@openbuilder/agent-core')) return false;
+  // Never externalize @hatchway/agent-core - we bundle it
+  if (id.startsWith('@hatchway/agent-core')) return false;
   
   return false;
 }
@@ -112,12 +112,12 @@ const commonPlugins = [
 
 // Banner to inject CJS compatibility shim for OpenTelemetry/Sentry instrumentation
 // The Sentry SDK uses require-in-the-middle which needs `require` and `require.cache`
-const cjsShimBanner = `// OpenBuilder CLI - Built with Rollup
+const cjsShimBanner = `// Hatchway CLI - Built with Rollup
 import { createRequire as __createRequire } from 'node:module';
 const require = __createRequire(import.meta.url);
 `;
 
-const defaultBanner = '// OpenBuilder CLI - Built with Rollup';
+const defaultBanner = '// Hatchway CLI - Built with Rollup';
 
 export default {
   input: {

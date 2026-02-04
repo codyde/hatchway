@@ -3,14 +3,14 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /**
- * Check if current directory or a given path contains the OpenBuilder monorepo
+ * Check if current directory or a given path contains the Hatchway monorepo
  */
-export async function isOpenBuilderRepo(path: string = process.cwd()): Promise<boolean> {
+export async function isHatchwayRepo(path: string = process.cwd()): Promise<boolean> {
   try {
     // Check for key indicators
     const packageJsonPath = join(path, 'package.json');
     const runnerPath = join(path, 'apps/runner');
-    const openbuilderPath = join(path, 'apps/openbuilder');
+    const hatchwayPath = join(path, 'apps/hatchway');
 
     // Must have package.json
     if (!existsSync(packageJsonPath)) {
@@ -18,13 +18,13 @@ export async function isOpenBuilderRepo(path: string = process.cwd()): Promise<b
     }
 
     // Must have the core app directories
-    if (!existsSync(runnerPath) || !existsSync(openbuilderPath)) {
+    if (!existsSync(runnerPath) || !existsSync(hatchwayPath)) {
       return false;
     }
 
     // Verify package.json has correct name
     const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
-    if (packageJson.name !== 'openbuilder-monorepo') {
+    if (packageJson.name !== 'hatchway-monorepo') {
       return false;
     }
 
@@ -35,7 +35,7 @@ export async function isOpenBuilderRepo(path: string = process.cwd()): Promise<b
 }
 
 /**
- * Find the OpenBuilder monorepo root from current location
+ * Find the Hatchway monorepo root from current location
  * Searches up the directory tree
  */
 export async function findMonorepoRoot(startPath: string = process.cwd()): Promise<string | null> {
@@ -43,7 +43,7 @@ export async function findMonorepoRoot(startPath: string = process.cwd()): Promi
   const root = '/';
 
   while (currentPath !== root) {
-    if (await isOpenBuilderRepo(currentPath)) {
+    if (await isHatchwayRepo(currentPath)) {
       return currentPath;
     }
 

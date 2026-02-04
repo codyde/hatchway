@@ -20,7 +20,7 @@ export class LogFileManager {
 
     // Create log file with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    this.logFile = join(logsDir, `openbuilder-${timestamp}.log`);
+    this.logFile = join(logsDir, `hatchway-${timestamp}.log`);
   }
 
   /**

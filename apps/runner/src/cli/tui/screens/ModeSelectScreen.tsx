@@ -13,7 +13,7 @@ const modeOptions: CardOption[] = [
   {
     id: 'local',
     title: 'Local Mode',
-    description: 'Run OpenBuilder on this machine',
+    description: 'Run Hatchway on this machine',
   },
   {
     id: 'runner',
@@ -30,7 +30,7 @@ export function ModeSelectScreen({ onSelect, onEscape }: ModeSelectScreenProps) 
   const { stdout } = useStdout();
   
   // Check for available update (set by auto-update check in index.ts)
-  const updateAvailable = process.env.OPENBUILDER_UPDATE_AVAILABLE;
+  const updateAvailable = process.env.HATCHWAY_UPDATE_AVAILABLE;
   
   // Calculate vertical centering
   const terminalHeight = stdout?.rows || 24;
@@ -52,7 +52,7 @@ export function ModeSelectScreen({ onSelect, onEscape }: ModeSelectScreenProps) 
           <Text color={colors.cyan}>⬆ Update available: </Text>
           <Text color={colors.success}>{updateAvailable}</Text>
           <Text color={colors.dimGray}> — Run </Text>
-          <Text color={colors.cyan}>openbuilder upgrade</Text>
+          <Text color={colors.cyan}>hatchway upgrade</Text>
           <Text color={colors.dimGray}> to update</Text>
         </Box>
       )}

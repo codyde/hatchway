@@ -17,7 +17,7 @@ import http from 'http';
 import https from 'https';
 import httpProxy from 'http-proxy';
 import zlib from 'zlib';
-import { SELECTION_SCRIPT } from '@openbuilder/agent-core/lib/selection/injector';
+import { SELECTION_SCRIPT } from '@hatchway/agent-core/lib/selection/injector';
 
 export interface InjectionProxyOptions {
   /** Dev server port to proxy to (e.g., 3000) */

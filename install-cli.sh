@@ -1,10 +1,10 @@
 #!/bin/bash
-# OpenBuilder CLI Installation Script
-# 
+# Hatchway CLI Installation Script
+#
 # This is a thin wrapper that ensures Node.js is available,
 # then runs the Node.js-based installer for a beautiful experience.
 #
-# Usage: curl -fsSL https://openbuilder.sh/install | bash
+# Usage: curl -fsSL https://hatchway.sh/install | bash
 
 set -e
 
@@ -20,7 +20,7 @@ if ! command -v node &> /dev/null; then
     echo ""
     echo -e "${RED}✖ Node.js not found${NC}"
     echo ""
-    echo "  OpenBuilder requires Node.js 20 or later."
+    echo "  Hatchway requires Node.js 20 or later."
     echo ""
     echo "  Install Node.js from:"
     echo -e "    ${CYAN}https://nodejs.org${NC}"
@@ -48,4 +48,4 @@ if [ "$NODE_VERSION" -lt 20 ]; then
 fi
 
 # Run the Node.js installer by piping to node stdin
-curl -fsSL https://raw.githubusercontent.com/codyde/openbuilder/main/install.mjs | node --input-type=module -
+curl -fsSL https://raw.githubusercontent.com/codyde/hatchway/main/install.mjs | node --input-type=module -

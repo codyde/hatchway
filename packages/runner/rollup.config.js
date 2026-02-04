@@ -1,8 +1,8 @@
 /**
- * Rollup configuration for @openbuilder/runner (lightweight runner package)
+ * Rollup configuration for @hatchway/runner (lightweight runner package)
  *
- * This config bundles the runner functionality from @openbuilder/cli at build time,
- * so the published package is self-contained and doesn't require @openbuilder/cli at runtime.
+ * This config bundles the runner functionality from @hatchway/cli at build time,
+ * so the published package is self-contained and doesn't require @hatchway/cli at runtime.
  */
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
@@ -77,7 +77,7 @@ const external = [
 // Check if a module should be external
 function isExternal(id) {
   // Never externalize workspace packages - we bundle them
-  if (id.startsWith('@openbuilder/')) return false;
+  if (id.startsWith('@hatchway/')) return false;
 
   // Exact matches
   if (external.includes(id)) return true;
@@ -109,26 +109,26 @@ function resolveWithExtensions(basePath, extensions = ['.ts', '.tsx', '.js', '.j
   return basePath + '.ts';
 }
 
-// Custom plugin to resolve @openbuilder/* imports to source files
+// Custom plugin to resolve @hatchway/* imports to source files
 function workspaceAliasPlugin() {
   return {
     name: 'workspace-alias',
     resolveId(source, importer) {
-      // Handle @openbuilder/cli imports
-      if (source === '@openbuilder/cli/index' || source === '@openbuilder/cli') {
+      // Handle @hatchway/cli imports
+      if (source === '@hatchway/cli/index' || source === '@hatchway/cli') {
         return { id: resolveWithExtensions(path.join(CLI_SRC, 'index')), external: false };
       }
-      if (source.startsWith('@openbuilder/cli/')) {
-        const subpath = source.replace('@openbuilder/cli/', '');
+      if (source.startsWith('@hatchway/cli/')) {
+        const subpath = source.replace('@hatchway/cli/', '');
         return { id: resolveWithExtensions(path.join(CLI_SRC, subpath)), external: false };
       }
 
-      // Handle @openbuilder/agent-core imports
-      if (source === '@openbuilder/agent-core/index' || source === '@openbuilder/agent-core') {
+      // Handle @hatchway/agent-core imports
+      if (source === '@hatchway/agent-core/index' || source === '@hatchway/agent-core') {
         return { id: resolveWithExtensions(path.join(AGENT_CORE_SRC, 'index')), external: false };
       }
-      if (source.startsWith('@openbuilder/agent-core/')) {
-        const subpath = source.replace('@openbuilder/agent-core/', '');
+      if (source.startsWith('@hatchway/agent-core/')) {
+        const subpath = source.replace('@hatchway/agent-core/', '');
         return { id: resolveWithExtensions(path.join(AGENT_CORE_SRC, subpath)), external: false };
       }
 
@@ -155,12 +155,12 @@ const commonPlugins = [
 ];
 
 // Banner for CJS compatibility shim
-const cjsShimBanner = `// OpenBuilder Runner - Built with Rollup
+const cjsShimBanner = `// Hatchway Runner - Built with Rollup
 import { createRequire as __createRequire } from 'node:module';
 const require = __createRequire(import.meta.url);
 `;
 
-const defaultBanner = '// OpenBuilder Runner - Built with Rollup';
+const defaultBanner = '// Hatchway Runner - Built with Rollup';
 
 export default {
   input: {

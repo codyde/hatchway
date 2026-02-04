@@ -250,7 +250,7 @@ async function ensureVitePortConfig(projectPath: string): Promise<void> {
     const match = content.match(serverConfigRegex);
 
     // Use port 3200 as fallback (end of our defined range 3101-3200)
-    // This avoids conflicts with openbuilder (3000) and is within our allocated range
+    // This avoids conflicts with hatchway (3000) and is within our allocated range
     const fallbackPort = '3200';
 
     if (match) {

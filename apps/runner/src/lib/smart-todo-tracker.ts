@@ -5,8 +5,8 @@
  * Combines AI-reported status with inferred state for maximum reliability.
  */
 
-import type { TodoItem } from '@openbuilder/agent-core/types/generation';
-import { buildLogger } from '@openbuilder/agent-core/lib/logging/build-logger';
+import type { TodoItem } from '@hatchway/agent-core/types/generation';
+import { buildLogger } from '@hatchway/agent-core/lib/logging/build-logger';
 
 export interface SmartTodoTracker {
   todos: TodoItem[];

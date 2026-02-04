@@ -20,10 +20,10 @@ export const HMR_PROXY_SCRIPT = `
   }
 
   // Track if we've initialized
-  if (window.__openbuilderHmrProxyInit) {
+  if (window.__hatchwayHmrProxyInit) {
     return;
   }
-  window.__openbuilderHmrProxyInit = true;
+  window.__hatchwayHmrProxyInit = true;
 
   // Store original WebSocket constructor
   const OriginalWebSocket = window.WebSocket;
@@ -101,7 +101,7 @@ export const HMR_PROXY_SCRIPT = `
       
       // Send connect request to parent
       window.parent.postMessage({
-        type: 'openbuilder:hmr:connect',
+        type: 'hatchway:hmr:connect',
         connectionId: this._connectionId,
         port: port,
         protocol: this.protocol,
@@ -115,7 +115,7 @@ export const HMR_PROXY_SCRIPT = `
       
       // Forward message to parent
       window.parent.postMessage({
-        type: 'openbuilder:hmr:send',
+        type: 'hatchway:hmr:send',
         connectionId: this._connectionId,
         message: typeof data === 'string' ? data : JSON.stringify(data),
       }, '*');
@@ -130,7 +130,7 @@ export const HMR_PROXY_SCRIPT = `
       
       // Tell parent to close connection
       window.parent.postMessage({
-        type: 'openbuilder:hmr:disconnect',
+        type: 'hatchway:hmr:disconnect',
         connectionId: this._connectionId,
         code: code,
         reason: reason,
@@ -273,10 +273,10 @@ export const HMR_PROXY_SCRIPT = `
     
     const { type, connectionId, message, code, reason, error, port } = event.data || {};
     
-    if (!type || !type.startsWith('openbuilder:hmr:')) return;
-    
+    if (!type || !type.startsWith('hatchway:hmr:')) return;
+
     // Handle config message to set dev server port
-    if (type === 'openbuilder:hmr:config') {
+    if (type === 'hatchway:hmr:config') {
       if (port && typeof port === 'number') {
         devServerPort = port;
         
@@ -295,25 +295,25 @@ export const HMR_PROXY_SCRIPT = `
     }
     
     switch (type) {
-      case 'openbuilder:hmr:connected':
+      case 'hatchway:hmr:connected':
         conn._onConnected();
         break;
-        
-      case 'openbuilder:hmr:message':
+
+      case 'hatchway:hmr:message':
         conn._onMessage(message);
         break;
-        
-      case 'openbuilder:hmr:closed':
+
+      case 'hatchway:hmr:closed':
         conn._onClosed(code || 1000, reason || '');
         break;
-        
-      case 'openbuilder:hmr:error':
+
+      case 'hatchway:hmr:error':
         conn._onError(error || 'Unknown error');
         break;
     }
   });
   
   // Announce ready to parent
-  window.parent.postMessage({ type: 'openbuilder:hmr:ready' }, '*');
+  window.parent.postMessage({ type: 'hatchway:hmr:ready' }, '*');
 })();
 `;

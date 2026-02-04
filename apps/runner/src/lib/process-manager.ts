@@ -2,7 +2,7 @@ import { spawn, ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { buildLogger } from '@openbuilder/agent-core/lib/logging/build-logger';
+import { buildLogger } from '@hatchway/agent-core/lib/logging/build-logger';
 import { join } from 'node:path';
 
 // Silent mode for TUI

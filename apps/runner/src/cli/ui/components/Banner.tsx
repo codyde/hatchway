@@ -1,5 +1,5 @@
 /**
- * Banner Component - OpenBuilder ASCII art banner for TUI
+ * Banner Component - Hatchway ASCII art banner for TUI
  * Matches the init TUI banner style - centered with cyan/purple gradient
  */
 

@@ -10,7 +10,7 @@ const CLOUDFLARED_GITHUB = 'https://github.com/cloudflare/cloudflared/releases/l
  */
 function getBinDir(): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
-  const binDir = resolve(homeDir, '.openbuilder', 'bin');
+  const binDir = resolve(homeDir, '.hatchway', 'bin');
 
   if (!existsSync(binDir)) {
     mkdirSync(binDir, { recursive: true });

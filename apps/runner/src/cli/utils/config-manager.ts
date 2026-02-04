@@ -9,7 +9,7 @@ export type ThemeName = 'sentry' | 'ocean' | 'ember' | 'forest' | 'noir';
 export interface RunnerConfig {
   version: string;
   workspace: string;
-  monorepoPath?: string; // Path to cloned openbuilder repository
+  monorepoPath?: string; // Path to cloned hatchway repository
   databaseUrl?: string; // PostgreSQL connection string
   apiUrl?: string; // API base URL (e.g., http://localhost:3000)
   autoUpdate?: boolean; // Enable automatic CLI updates (default: true)
@@ -49,8 +49,8 @@ export class ConfigManager {
 
   constructor() {
     this.conf = new Conf<RunnerConfig>({
-      projectName: 'openbuilder',
-      projectSuffix: '', // No suffix, just 'openbuilder'
+      projectName: 'hatchway',
+      projectSuffix: '', // No suffix, just 'hatchway'
       defaults: this.getDefaults(),
     });
   }
@@ -58,7 +58,7 @@ export class ConfigManager {
   private getDefaults(): RunnerConfig {
     return {
       version: '0.1.0',
-      workspace: join(homedir(), 'openbuilder-workspace'),
+      workspace: join(homedir(), 'hatchway-workspace'),
       apiUrl: 'http://localhost:3000', // Default API URL
       server: {
         wsUrl: 'ws://localhost:3000/ws/runner', // Direct WebSocket connection to Next.js

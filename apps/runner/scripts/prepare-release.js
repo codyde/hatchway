@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Prepare package.json for publishing
- * 
+ *
  * This script:
- * 1. REMOVES @openbuilder/agent-core from dependencies (it's bundled by rollup)
+ * 1. REMOVES @hatchway/agent-core from dependencies (it's bundled by rollup)
  * 2. Removes bundled React ecosystem packages to prevent duplicate React instances
  */
 import { readFileSync, writeFileSync } from 'fs';
@@ -23,7 +23,7 @@ let modified = false;
 
 // REMOVE workspace dependencies - they're bundled into dist/ by rollup
 // This eliminates npm 404 errors since these packages don't exist on npm
-const workspaceDeps = ['@openbuilder/agent-core', '@openbuilder/opencode-client'];
+const workspaceDeps = ['@hatchway/agent-core', '@hatchway/opencode-client'];
 for (const dep of workspaceDeps) {
   if (packageJson.dependencies[dep]) {
     console.log(`  Removing ${dep} (bundled by rollup)`);

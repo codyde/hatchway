@@ -16,9 +16,9 @@ import {
   storeToken 
 } from '../utils/cli-auth.js';
 
-// Default public OpenBuilder instance
-const DEFAULT_URL = 'https://openbuilder.sh';
-const DEFAULT_WORKSPACE = join(homedir(), 'openbuilder-workspace');
+// Default public Hatchway instance
+const DEFAULT_URL = 'https://hatchway.sh';
+const DEFAULT_WORKSPACE = join(homedir(), 'hatchway-workspace');
 
 /**
  * Normalize URL by adding protocol if missing
@@ -99,7 +99,7 @@ function shouldUseTUI(options: RunOptions): boolean {
 export async function runCommand(options: RunOptions) {
   // Set local mode environment variable if requested
   if (options.local) {
-    process.env.OPENBUILDER_LOCAL_MODE = 'true';
+    process.env.HATCHWAY_LOCAL_MODE = 'true';
     logger.info(chalk.yellow('Local mode enabled - authentication bypassed'));
   }
 
@@ -107,7 +107,7 @@ export async function runCommand(options: RunOptions) {
 
   // Build runner options from CLI flags or smart defaults
   // NOTE: For the `runner` command, we intentionally ignore local config values
-  // and default to the public OpenBuilder instance. This command is specifically
+  // and default to the public Hatchway instance. This command is specifically
   // for connecting to remote servers, not local development.
   // Users can still override with CLI flags if needed.
   
@@ -117,7 +117,7 @@ export async function runCommand(options: RunOptions) {
   // Resolve WebSocket URL: CLI broker flag > derive from API URL (ignore config)
   const wsUrl = options.broker || deriveWsUrl(apiUrl);
   
-  // Resolve workspace: CLI flag > config > default ~/openbuilder-workspace
+  // Resolve workspace: CLI flag > config > default ~/hatchway-workspace
   // (workspace from config is fine since it's user's preference for where projects go)
   const config = configManager.get();
   const workspace = options.workspace || config.workspace || DEFAULT_WORKSPACE;
@@ -174,10 +174,10 @@ export async function runCommand(options: RunOptions) {
         logger.error(result.error || 'Authentication failed');
         logger.info('');
         logger.info('You can also provide a token manually:');
-        logger.info(`  ${chalk.cyan('openbuilder runner --secret <your-secret>')}`);
+        logger.info(`  ${chalk.cyan('hatchway runner --secret <your-secret>')}`);
         logger.info('');
         logger.info('Or login first:');
-        logger.info(`  ${chalk.cyan('openbuilder login')}`);
+        logger.info(`  ${chalk.cyan('hatchway login')}`);
         process.exit(1);
       }
     }
@@ -186,11 +186,11 @@ export async function runCommand(options: RunOptions) {
     if (!runnerOptions.sharedSecret && !options.local) {
       logger.error('Shared secret is required');
       logger.info('');
-      logger.info('Get a runner key from your OpenBuilder dashboard, or provide via:');
-      logger.info(`  ${chalk.cyan('openbuilder runner --secret <your-secret>')}`);
+      logger.info('Get a runner key from your Hatchway dashboard, or provide via:');
+      logger.info(`  ${chalk.cyan('hatchway runner --secret <your-secret>')}`);
       logger.info('');
       logger.info('Or login with OAuth:');
-      logger.info(`  ${chalk.cyan('openbuilder login')}`);
+      logger.info(`  ${chalk.cyan('hatchway login')}`);
       process.exit(1);
     }
   }
@@ -200,7 +200,7 @@ export async function runCommand(options: RunOptions) {
   // ========================================
   if (!useTUI) {
     // Display startup info
-    logger.section('Starting OpenBuilder Runner');
+    logger.section('Starting Hatchway Runner');
     logger.info(`Server: ${chalk.cyan(runnerOptions.wsUrl)}`);
     logger.info(`API URL: ${chalk.cyan(runnerOptions.apiUrl)}`);
     logger.info(`Runner ID: ${chalk.cyan(runnerOptions.runnerId)}`);

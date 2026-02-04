@@ -23,7 +23,7 @@ import {
   CLAUDE_SYSTEM_PROMPT,
   type ClaudeModelId,
   DEFAULT_CLAUDE_MODEL_ID,
-} from '@openbuilder/agent-core';
+} from '@hatchway/agent-core';
 
 // Debug logging helper - suppressed in TUI mode (SILENT_MODE=1)
 const debugLog = (message: string) => {

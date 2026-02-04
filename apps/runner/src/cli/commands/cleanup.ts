@@ -55,8 +55,8 @@ export async function cleanupCommand(options: CleanupOptions) {
   logger.log(`  ${chalk.cyan('--processes')}       Kill all dev servers (requires running runner)`);
   logger.log('');
   logger.info('Examples:');
-  logger.log(`  openbuilder cleanup --project my-project`);
-  logger.log(`  openbuilder cleanup --all`);
+  logger.log(`  hatchway cleanup --project my-project`);
+  logger.log(`  hatchway cleanup --all`);
 }
 
 async function cleanupProject(workspace: string, slug: string) {

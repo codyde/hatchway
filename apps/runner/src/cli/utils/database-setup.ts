@@ -163,13 +163,13 @@ export async function pushDatabaseSchema(monorepoPath: string, databaseUrl: stri
   const { join } = await import('path');
   const { existsSync } = await import('fs');
 
-  const openbuilderAppPath = join(monorepoPath, 'apps/openbuilder');
-  const configPath = join(openbuilderAppPath, 'drizzle.config.ts');
+  const hatchwayAppPath = join(monorepoPath, 'apps/hatchway');
+  const configPath = join(hatchwayAppPath, 'drizzle.config.ts');
 
   // Verify paths exist
-  if (!existsSync(openbuilderAppPath)) {
+  if (!existsSync(hatchwayAppPath)) {
     if (!silent) {
-      logger.error(`Directory not found: ${openbuilderAppPath}`);
+      logger.error(`Directory not found: ${hatchwayAppPath}`);
     }
     return false;
   }
@@ -182,15 +182,15 @@ export async function pushDatabaseSchema(monorepoPath: string, databaseUrl: stri
   }
 
   if (!silent) {
-    spinner.start('Ensuring openbuilder dependencies are installed...');
+    spinner.start('Ensuring hatchway dependencies are installed...');
   }
 
   try {
     execFileSync('pnpm', ['install'], {
-      cwd: openbuilderAppPath,
+      cwd: hatchwayAppPath,
       stdio: 'pipe',
     });
-    execFileSync('pnpm', ['--filter', '@openbuilder/agent-core', 'build'], {
+    execFileSync('pnpm', ['--filter', '@hatchway/agent-core', 'build'], {
       cwd: monorepoPath,
       stdio: 'pipe',
     });
@@ -209,7 +209,7 @@ export async function pushDatabaseSchema(monorepoPath: string, databaseUrl: stri
 
   return new Promise((resolve) => {
     const proc = spawn('npx', ['drizzle-kit', 'push', '--config=drizzle.config.ts'], {
-      cwd: openbuilderAppPath,
+      cwd: hatchwayAppPath,
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
       env: {
@@ -270,7 +270,7 @@ export async function connectManualDatabase(): Promise<string | null> {
   const connectionType = await prompts.select(
     'How would you like to connect your database?',
     [
-      'Connect an existing OpenBuilder database',
+      'Connect an existing Hatchway database',
       'Provide a connection string directly',
     ]
   );
@@ -279,8 +279,8 @@ export async function connectManualDatabase(): Promise<string | null> {
 
   // Prompt for the connection string
   let message: string;
-  if (connectionType === 'Connect an existing OpenBuilder database') {
-    message = 'Enter your OpenBuilder database connection string:';
+  if (connectionType === 'Connect an existing Hatchway database') {
+    message = 'Enter your Hatchway database connection string:';
   } else {
     message = 'Enter your PostgreSQL connection string:';
   }

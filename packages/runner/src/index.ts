@@ -1,20 +1,20 @@
 /**
- * @openbuilder/runner - Lightweight runner package
+ * @hatchway/runner - Lightweight runner package
  *
- * This package bundles the runner functionality from @openbuilder/cli
+ * This package bundles the runner functionality from @hatchway/cli
  * for a smaller package size when you only need the runner.
  */
 
 // Re-export the startRunner function and types from the CLI source
 // These imports are resolved by the alias plugin at build time
-export { startRunner } from '@openbuilder/cli/index';
-export type { RunnerOptions } from '@openbuilder/cli/index';
+export { startRunner } from '@hatchway/cli/index';
+export type { RunnerOptions } from '@hatchway/cli/index';
 
 // Re-export runner command for CLI usage
-export { runCommand } from '@openbuilder/cli/cli/commands/run';
+export { runCommand } from '@hatchway/cli/cli/commands/run';
 
 // Re-export TUI components
-export { RunnerDashboard } from '@openbuilder/cli/cli/tui/screens/RunnerDashboard';
+export { RunnerDashboard } from '@hatchway/cli/cli/tui/screens/RunnerDashboard';
 
 // Re-export auth utilities
 export {
@@ -24,10 +24,10 @@ export {
   storeToken,
   clearToken,
   validateToken,
-} from '@openbuilder/cli/cli/utils/cli-auth';
+} from '@hatchway/cli/cli/utils/cli-auth';
 
 // Re-export config manager
 export {
   configManager,
   type RunnerConfig,
-} from '@openbuilder/cli/cli/utils/config-manager';
+} from '@hatchway/cli/cli/utils/config-manager';

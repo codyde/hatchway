@@ -1,5 +1,5 @@
 packages:
-  - apps/openbuilder
+  - apps/hatchway
   - apps/runner
   - apps/opencode-service
   - packages/agent-core

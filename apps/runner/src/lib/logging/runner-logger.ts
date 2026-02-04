@@ -1,5 +1,5 @@
 /**
- * RunnerLogger - Unified logging for the OpenBuilder Runner
+ * RunnerLogger - Unified logging for the Hatchway Runner
  * 
  * Provides structured logging with:
  * - Verbose mode filtering
@@ -107,7 +107,7 @@ export class RunnerLogger extends EventEmitter {
     // Plain text mode - print formatted header
     const line = '━'.repeat(60);
     console.log(chalk.cyan(line));
-    console.log(chalk.cyan.bold(' OpenBuilder Runner'));
+    console.log(chalk.cyan.bold(' Hatchway Runner'));
     console.log(chalk.cyan(line));
     console.log(chalk.gray(' Runner ID  '), chalk.white(config.runnerId));
     console.log(chalk.gray(' Server     '), chalk.white(config.serverUrl));

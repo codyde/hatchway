@@ -8,10 +8,10 @@ interface LoginOptions {
 }
 
 /**
- * Login command - authenticate with OpenBuilder via OAuth
- * 
+ * Login command - authenticate with Hatchway via OAuth
+ *
  * Usage:
- *   openbuilder login [--url <server-url>] [--force]
+ *   hatchway login [--url <server-url>] [--force]
  * 
  * This command:
  * 1. Opens a browser for OAuth authentication (GitHub or Sentry)
@@ -19,9 +19,9 @@ interface LoginOptions {
  * 3. Stores the token locally for future use
  */
 export async function loginCommand(options: LoginOptions = {}) {
-  const apiUrl = options.url || 'https://openbuilder.sh';
-  
-  logger.section('OpenBuilder Login');
+  const apiUrl = options.url || 'https://hatchway.sh';
+
+  logger.section('Hatchway Login');
   
   // Check if already logged in
   if (!options.force && hasStoredToken()) {
@@ -29,8 +29,8 @@ export async function loginCommand(options: LoginOptions = {}) {
     logger.info(`Already logged in with token: ${chalk.cyan(existingToken?.substring(0, 12) + '...')}`);
     logger.info('');
     logger.info('Use --force to re-authenticate, or run:');
-    logger.info(`  ${chalk.cyan('openbuilder logout')} to clear credentials`);
-    logger.info(`  ${chalk.cyan('openbuilder runner')} to start the runner`);
+    logger.info(`  ${chalk.cyan('hatchway logout')} to clear credentials`);
+    logger.info(`  ${chalk.cyan('hatchway runner')} to start the runner`);
     return;
   }
   
@@ -53,7 +53,7 @@ export async function loginCommand(options: LoginOptions = {}) {
     logger.info(`Token stored: ${chalk.cyan(result.token.substring(0, 12) + '...')}`);
     logger.info('');
     logger.info('You can now run:');
-    logger.info(`  ${chalk.cyan('openbuilder runner')} to start the runner`);
+    logger.info(`  ${chalk.cyan('hatchway runner')} to start the runner`);
   } else {
     logger.error(result.error || 'Authentication failed');
     process.exit(1);

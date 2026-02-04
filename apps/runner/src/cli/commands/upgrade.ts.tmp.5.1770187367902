@@ -1,0 +1,527 @@
+/**
+ * Upgrade command - In-place upgrade to latest version
+ * 
+ * This command upgrades both:
+ * 1. The CLI itself (globally installed npm package)
+ * 2. The app/monorepo (local installation that runs the web app)
+ */
+
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, copyFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { execSync } from 'node:child_process';
+import * as p from '@clack/prompts';
+import pc from 'picocolors';
+import { CLIError, errors } from '../utils/cli-error.js';
+import { isInsideMonorepo } from '../utils/repo-detector.js';
+import { configManager } from '../utils/config-manager.js';
+
+// GitHub API endpoint for releases
+const GITHUB_RELEASES_URL = 'https://api.github.com/repos/codyde/openhatch/releases/latest';
+
+// Install command for CLI
+const INSTALL_COMMAND = 'curl -fsSL https://openhatch.sh/install | bash';
+
+interface UpgradeOptions {
+  branch?: string;
+  force?: boolean;
+}
+
+interface EnvBackup {
+  runner: { env?: string; envLocal?: string };
+  openbuilder: { env?: string; envLocal?: string };
+}
+
+/**
+ * Fetch the latest release version from GitHub
+ */
+async function fetchLatestVersion(): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(GITHUB_RELEASES_URL, {
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'Openhatch-CLI-Upgrade',
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json() as { tag_name: string };
+    return data.tag_name.replace(/^v/, '');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Compare two semver versions
+ * Returns true if version1 < version2 (i.e., version2 is newer)
+ */
+function isNewerVersion(current: string, latest: string): boolean {
+  const parseVersion = (v: string) => {
+    const parts = v.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+    return { major: parts[0] || 0, minor: parts[1] || 0, patch: parts[2] || 0 };
+  };
+
+  const c = parseVersion(current);
+  const l = parseVersion(latest);
+
+  if (l.major > c.major) return true;
+  if (l.major < c.major) return false;
+  if (l.minor > c.minor) return true;
+  if (l.minor < c.minor) return false;
+  return l.patch > c.patch;
+}
+
+/**
+ * Perform the CLI update by running the install script
+ */
+function performCLIUpdate(): boolean {
+  try {
+    execSync(INSTALL_COMMAND, {
+      stdio: 'inherit',
+      shell: '/bin/bash',
+      env: {
+        ...process.env,
+        OPENHATCH_QUIET_INSTALL: '1',
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function upgradeCommand(options: UpgradeOptions) {
+  const s = p.spinner();
+  
+  // Get current CLI version
+  let currentVersion = '0.0.0';
+  try {
+    // Try to find package.json by traversing up
+    let searchDir = dirname(new URL(import.meta.url).pathname);
+    for (let i = 0; i < 5; i++) {
+      const pkgPath = join(searchDir, 'package.json');
+      if (existsSync(pkgPath)) {
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+        currentVersion = pkg.version || '0.0.0';
+        break;
+      }
+      searchDir = dirname(searchDir);
+    }
+  } catch {
+    // Ignore errors reading package.json
+  }
+  
+  // ========================================
+  // STEP 1: Always update CLI automatically
+  // ========================================
+  s.start('Checking for CLI updates');
+  
+  const latestVersion = await fetchLatestVersion();
+  
+  if (latestVersion && isNewerVersion(currentVersion, latestVersion)) {
+    s.stop(pc.cyan('⬆') + ` CLI update available: ${pc.dim(currentVersion)} → ${pc.green(latestVersion)}`);
+    
+    console.log();
+    console.log(`  ${pc.dim('Updating CLI...')}`);
+    
+    const cliSuccess = performCLIUpdate();
+    
+    if (cliSuccess) {
+      console.log(`  ${pc.green('✓')} CLI updated to ${pc.green(latestVersion)}`);
+      console.log();
+    } else {
+      console.log(`  ${pc.yellow('⚠')} CLI update failed`);
+      console.log(`  ${pc.dim('Run manually:')} ${pc.cyan(INSTALL_COMMAND)}`);
+      console.log();
+    }
+  } else if (latestVersion) {
+    s.stop(pc.green('✓') + ` CLI is up to date (${currentVersion})`);
+  } else {
+    s.stop(pc.yellow('⚠') + ' Could not check for CLI updates');
+  }
+
+  // ========================================
+  // STEP 2: Find app installation and prompt
+  // ========================================
+  s.start('Locating OpenBuilder app installation');
+
+  let monorepoRoot: string | undefined;
+  const config = configManager.get();
+
+  // Try config first
+  if (config.monorepoPath && existsSync(config.monorepoPath)) {
+    monorepoRoot = config.monorepoPath;
+  }
+
+  // Try detection if not in config
+  if (!monorepoRoot) {
+    const repoCheck = await isInsideMonorepo();
+    if (repoCheck.inside && repoCheck.root) {
+      monorepoRoot = repoCheck.root;
+    }
+  }
+
+  if (!monorepoRoot) {
+    s.stop(pc.dim('ℹ') + ' No OpenBuilder app installation found');
+    console.log();
+    console.log(pc.dim('  The CLI has been updated. No local app installation to upgrade.'));
+    console.log(pc.dim('  Run ') + pc.cyan('openbuilder init') + pc.dim(' to set up a local installation.'));
+    console.log();
+    return;
+  }
+
+  s.stop(pc.green('✓') + ` Found app installation`);
+  
+  // Prompt user about upgrading the app
+  console.log();
+  console.log(`  ${pc.bold('App installation found:')}`);
+  console.log(`  ${pc.cyan(monorepoRoot)}`);
+  console.log();
+  
+  // Skip prompt if --force is used
+  if (!options.force) {
+    const shouldUpgradeApp = await p.confirm({
+      message: 'Would you like to upgrade the app installation as well?',
+      initialValue: true,
+    });
+    
+    if (p.isCancel(shouldUpgradeApp) || !shouldUpgradeApp) {
+      console.log();
+      console.log(pc.dim('  Skipping app upgrade. CLI has been updated.'));
+      console.log();
+      return;
+    }
+  }
+  
+  console.log();
+
+  // Check git status before upgrading
+  if (!options.force) {
+    s.start('Checking for uncommitted changes');
+
+    try {
+      const gitStatus = execSync('git status --porcelain', {
+        cwd: monorepoRoot,
+        encoding: 'utf-8',
+      }).trim();
+
+      if (gitStatus.length > 0) {
+        s.stop(pc.yellow('⚠') + ' Uncommitted changes detected');
+
+        const changes = gitStatus.split('\n').slice(0, 5);
+        console.log(pc.dim('  Modified files:'));
+        changes.forEach(line => console.log(pc.dim(`    ${line}`)));
+
+        if (!options.force) {
+          const confirm = await p.confirm({
+            message: 'Continue upgrade? This will discard local changes.',
+            initialValue: false,
+          });
+
+          if (!confirm || p.isCancel(confirm)) {
+            console.log(pc.dim('\nUpgrade cancelled'));
+            process.exit(0);
+          }
+        }
+      } else {
+        s.stop(pc.green('✓') + ' No uncommitted changes');
+      }
+    } catch (error) {
+      s.stop(pc.yellow('⚠') + ' Not a git repository');
+      // Continue anyway - user might have extracted from tarball
+    }
+  }
+
+  // Backup configuration files
+  s.start('Backing up configuration files');
+
+  const envBackup: EnvBackup = {
+    runner: {},
+    openbuilder: {},
+  };
+
+  // Define paths to check
+  const envPaths = [
+    { app: 'runner', path: join(monorepoRoot, 'apps/runner/.env') },
+    { app: 'runner', pathLocal: join(monorepoRoot, 'apps/runner/.env.local') },
+    { app: 'openbuilder', path: join(monorepoRoot, 'apps/openbuilder/.env') },
+    { app: 'openbuilder', pathLocal: join(monorepoRoot, 'apps/openbuilder/.env.local') },
+  ];
+
+  let backedUpCount = 0;
+
+  for (const item of envPaths) {
+    const app = item.app as keyof EnvBackup;
+    const filePath = item.path || item.pathLocal!;
+    const isLocal = !!item.pathLocal;
+
+    if (existsSync(filePath)) {
+      const content = readFileSync(filePath, 'utf-8');
+      if (isLocal) {
+        envBackup[app].envLocal = content;
+      } else {
+        envBackup[app].env = content;
+      }
+      backedUpCount++;
+    }
+  }
+
+  s.stop(pc.green('✓') + ` Backed up ${backedUpCount} configuration file(s)`);
+
+  // Determine branch and clone
+  const branch = options.branch || 'main';
+
+  s.start(`Cloning fresh copy from ${pc.cyan(branch)}`);
+
+  const parentDir = dirname(monorepoRoot);
+  const repoName = monorepoRoot.split('/').pop();
+  const tempDir = join(parentDir, `${repoName}-upgrade-temp`);
+
+  // Remove temp directory if it exists from failed previous upgrade
+  if (existsSync(tempDir)) {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+
+  try {
+    execSync(
+      `git clone --branch ${branch} --depth 1 https://github.com/codyde/openbuilder.git "${tempDir}"`,
+      {
+        cwd: parentDir,
+        stdio: 'pipe', // Silent
+      }
+    );
+
+    s.stop(pc.green('✓') + ' Cloned successfully');
+  } catch (error) {
+    s.stop(pc.red('✗') + ' Clone failed');
+
+    // Cleanup temp dir
+    if (existsSync(tempDir)) {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+
+    throw new CLIError({
+      code: 'UPGRADE_CLONE_FAILED',
+      message: `Failed to clone branch "${branch}"`,
+      suggestions: [
+        'Check your internet connection',
+        'Verify the branch exists: https://github.com/codyde/openbuilder/tree/' + branch,
+        'Try upgrading to main: openbuilder upgrade',
+      ],
+    });
+  }
+
+  // Restore configuration files
+  s.start('Restoring configuration files');
+
+  let restoredCount = 0;
+
+  const restorePaths = [
+    { app: 'runner' as const, file: '.env', dir: join(tempDir, 'apps/runner') },
+    { app: 'runner' as const, file: '.env.local', dir: join(tempDir, 'apps/runner') },
+    { app: 'openbuilder' as const, file: '.env', dir: join(tempDir, 'apps/openbuilder') },
+    { app: 'openbuilder' as const, file: '.env.local', dir: join(tempDir, 'apps/openbuilder') },
+  ];
+
+  for (const item of restorePaths) {
+    const isLocal = item.file === '.env.local';
+    const backupContent = isLocal ? envBackup[item.app].envLocal : envBackup[item.app].env;
+
+    if (backupContent) {
+      const targetPath = join(item.dir, item.file);
+      writeFileSync(targetPath, backupContent, 'utf-8');
+      restoredCount++;
+    }
+  }
+
+  s.stop(pc.green('✓') + ` Restored ${restoredCount} configuration file(s)`);
+
+  // Install dependencies
+  s.start('Installing dependencies');
+
+  try {
+    execSync('pnpm install', {
+      cwd: tempDir,
+      stdio: 'pipe',
+      env: { ...process.env, TURBO_TELEMETRY_DISABLED: '1' },
+    });
+
+    s.stop(pc.green('✓') + ' Dependencies installed');
+  } catch (error) {
+    s.stop(pc.red('✗') + ' Dependency installation failed');
+
+    // Cleanup
+    rmSync(tempDir, { recursive: true, force: true });
+
+    throw new CLIError({
+      code: 'UPGRADE_INSTALL_FAILED',
+      message: 'Failed to install dependencies in new version',
+      suggestions: [
+        'Check if the branch is stable',
+        'Try upgrading to main instead',
+        'Check disk space',
+      ],
+    });
+  }
+
+  // Build services
+  s.start('Building services (this may take a moment)');
+
+  try {
+    execSync('pnpm turbo build', {
+      cwd: tempDir,
+      stdio: 'pipe',
+      env: { ...process.env, TURBO_TELEMETRY_DISABLED: '1' },
+    });
+
+    s.stop(pc.green('✓') + ' Build successful');
+  } catch (error) {
+    s.stop(pc.red('✗') + ' Build failed');
+
+    // Try to extract error message from execSync error
+    let errorOutput = '';
+    if (error && typeof error === 'object' && 'stderr' in error) {
+      errorOutput = String((error as { stderr?: unknown }).stderr || '');
+    }
+    if (!errorOutput && error && typeof error === 'object' && 'stdout' in error) {
+      errorOutput = String((error as { stdout?: unknown }).stdout || '');
+    }
+
+    // Show error details if available
+    if (errorOutput) {
+      console.log(pc.red('\nBuild errors:'));
+      console.log(pc.gray('─'.repeat(60)));
+      const lines = errorOutput.split('\n').slice(-20);
+      lines.forEach(line => console.log(pc.red(`  ${line}`)));
+      console.log(pc.gray('─'.repeat(60)));
+      console.log('');
+    }
+
+    // Cleanup
+    rmSync(tempDir, { recursive: true, force: true });
+
+    throw new CLIError({
+      code: 'UPGRADE_BUILD_FAILED',
+      message: 'Failed to build new version',
+      suggestions: [
+        'The branch may have build errors',
+        'Try upgrading to a stable release tag',
+        'Check build logs for errors',
+      ],
+    });
+  }
+
+  // Apply database migrations (if DATABASE_URL exists)
+  const databaseUrl =
+    envBackup.openbuilder.env?.match(/DATABASE_URL=["']?([^"'\n]+)["']?/)?.[1] ||
+    envBackup.openbuilder.envLocal?.match(/DATABASE_URL=["']?([^"'\n]+)["']?/)?.[1] ||
+    process.env.DATABASE_URL;
+
+  if (databaseUrl) {
+    s.start('Applying database migrations');
+
+    try {
+      execSync('npx drizzle-kit push --config=drizzle.config.ts', {
+        cwd: join(tempDir, 'apps/openbuilder'),
+        stdio: 'pipe',
+        env: {
+          ...process.env,
+          DATABASE_URL: databaseUrl,
+        },
+      });
+
+      s.stop(pc.green('✓') + ' Database schema updated');
+    } catch (error) {
+      s.stop(pc.yellow('⚠') + ' Migration failed');
+      console.log(pc.dim('  You may need to run: openbuilder database'));
+      console.log(pc.dim('  This won\'t prevent the upgrade from completing'));
+    }
+  } else {
+    s.start('Skipping database migrations (no DATABASE_URL found)');
+    s.stop(pc.yellow('⚠') + ' No database configured');
+  }
+
+  // Swap directories (atomic operation)
+  s.start('Finalizing upgrade');
+
+  const backupDir = join(parentDir, `${repoName}-backup-${Date.now()}`);
+
+  try {
+    // Rename current installation to backup
+    renameSync(monorepoRoot, backupDir);
+
+    // Rename new installation to production
+    renameSync(tempDir, monorepoRoot);
+
+    s.stop(pc.green('✓') + ' Upgrade finalized');
+  } catch (error) {
+    s.stop(pc.red('✗') + ' Failed to swap directories');
+
+    // Attempt recovery
+    try {
+      if (existsSync(backupDir)) {
+        renameSync(backupDir, monorepoRoot);
+        console.log(pc.yellow('⚠') + ' Restored original installation');
+      }
+      if (existsSync(tempDir)) {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    } catch (recoveryError) {
+      console.error(pc.red('❌') + ' Failed to recover. Manual intervention required.');
+      console.error(pc.dim(`   Backup location: ${backupDir}`));
+    }
+
+    throw error;
+  }
+
+  // Cleanup backup
+  s.start('Cleaning up');
+
+  try {
+    rmSync(backupDir, { recursive: true, force: true });
+    s.stop(pc.green('✓') + ' Cleanup complete');
+  } catch (error) {
+    s.stop(pc.yellow('⚠') + ' Could not remove backup');
+    console.log(pc.dim(`   You can manually delete: ${backupDir}`));
+  }
+
+  // Success!
+  console.log();
+  console.log(pc.green('✓') + pc.bold(' Upgrade complete!'));
+  console.log();
+
+  // Check if user is currently inside the monorepo directory
+  const currentDir = process.cwd();
+  const isCurrentlyInMonorepo = currentDir.startsWith(monorepoRoot);
+
+  if (isCurrentlyInMonorepo) {
+    console.log(pc.yellow('⚠') + pc.bold('  IMPORTANT: Your shell directory is stale'));
+    console.log();
+    console.log(pc.dim('  The upgrade renamed directories while you were inside them.'));
+    console.log(pc.dim('  You need to refresh your shell location:'));
+    console.log();
+    console.log(pc.cyan('  cd .. && cd ' + monorepoRoot.split('/').pop()));
+    console.log();
+    console.log(pc.dim('  Or simply close and reopen your terminal.'));
+    console.log();
+  }
+
+  console.log(pc.dim('  Note: Restart your terminal to use the updated CLI'));
+  console.log(pc.dim('  Or run: hash -r'));
+  console.log();
+
+  if (branch !== 'main') {
+    console.log(pc.yellow('⚠') + ` You upgraded to branch: ${pc.cyan(branch)}`);
+    console.log(pc.dim('  To return to main: openbuilder upgrade'));
+    console.log();
+  }
+}

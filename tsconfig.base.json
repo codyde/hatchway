@@ -7,7 +7,7 @@
     "paths": {
       "@/lib/*": ["packages/agent-core/src/lib/*"],
       "@/types/*": ["packages/agent-core/src/types/*"],
-      "@/shared/*": ["apps/openbuilder/src/shared/*"]
+      "@/shared/*": ["apps/hatchway/src/shared/*"]
     }
   }
 }

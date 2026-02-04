@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @openbuilder/runner - Lightweight CLI for running the OpenBuilder runner only
+ * @hatchway/runner - Lightweight CLI for running the Hatchway runner only
  *
  * This is a minimal CLI that provides just the `runner` command functionality
  * without the full CLI overhead (init, build, database, etc.)
@@ -32,7 +32,7 @@ function findPackageRoot(startDir: string): string {
 const packageRoot = findPackageRoot(__dirname);
 
 // Check if running in development mode
-const isLinkedDevelopment = packageRoot.includes('/openbuilder/packages/runner');
+const isLinkedDevelopment = packageRoot.includes('/hatchway/packages/runner');
 
 // Only run vendor install for production global installs
 if (!isLinkedDevelopment) {
@@ -64,7 +64,7 @@ const packageJson = JSON.parse(
 // Display a minimal banner
 function displayBanner() {
   console.log('');
-  console.log(chalk.cyan('  OpenBuilder Runner'));
+  console.log(chalk.cyan('  Hatchway Runner'));
   console.log(chalk.dim(`  v${packageJson.version}`));
   console.log('');
 }
@@ -81,11 +81,11 @@ if (!isVersionCommand && isNoTui) {
 const program = new Command();
 
 program
-  .name('openbuilder-runner')
-  .description('Lightweight OpenBuilder Runner - Connect to OpenBuilder server')
+  .name('hatchway-runner')
+  .description('Lightweight Hatchway Runner - Connect to Hatchway server')
   .version(packageJson.version)
-  .option('-u, --url <url>', 'OpenBuilder server URL (default: https://openbuilder.sh)')
-  .option('-w, --workspace <path>', 'Workspace directory (default: ~/openbuilder-workspace)')
+  .option('-u, --url <url>', 'Hatchway server URL (default: https://hatchway.sh)')
+  .option('-w, --workspace <path>', 'Workspace directory (default: ~/hatchway-workspace)')
   .option('-i, --runner-id <id>', 'Runner identifier (default: system username)')
   .option('-s, --secret <secret>', 'Shared secret for authentication')
   .option('-b, --broker <url>', 'WebSocket URL override (advanced, inferred from --url)')
@@ -95,7 +95,7 @@ program
   .action(async (options) => {
     try {
       // Import the runner command - this will be resolved by the alias plugin at build time
-      const { runCommand } = await import('@openbuilder/cli/cli/commands/run');
+      const { runCommand } = await import('@hatchway/cli/cli/commands/run');
       await runCommand(options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');

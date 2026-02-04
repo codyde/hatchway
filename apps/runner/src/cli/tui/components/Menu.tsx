@@ -15,8 +15,8 @@ interface MenuProps {
 
 /**
  * Arrow-key navigable menu component
- * 
- * > Initialize OpenBuilder
+ *
+ * > Initialize Hatchway
  *   Start Runner
  *   Exit
  */

@@ -4,7 +4,7 @@
  */
 
 // Use namespace import for buildLogger to work around CommonJS/ESM interop
-import * as AgentCore from '@openbuilder/agent-core';
+import * as AgentCore from '@hatchway/agent-core';
 const { buildLogger } = AgentCore;
 
 interface SSEEvent {

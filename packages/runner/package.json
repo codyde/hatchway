@@ -1,12 +1,12 @@
 {
-  "name": "@openbuilder/runner",
+  "name": "@hatchway/runner",
   "version": "0.50.33",
-  "description": "Lightweight OpenBuilder Runner - Connect to OpenBuilder server with minimal footprint",
+  "description": "Lightweight Hatchway Runner - Connect to Hatchway server with minimal footprint",
   "private": false,
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "openbuilder-runner": "./bin/runner.js"
+    "hatchway-runner": "./bin/runner.js"
   },
   "files": [
     "bin/",
@@ -17,7 +17,7 @@
     "node": ">=18.0.0"
   },
   "keywords": [
-    "openbuilder",
+    "hatchway",
     "ai",
     "claude",
     "runner",
@@ -26,13 +26,13 @@
   "author": "Cody De Arkland",
   "repository": {
     "type": "git",
-    "url": "https://github.com/codyde/openbuilder.git",
+    "url": "https://github.com/codyde/hatchway.git",
     "directory": "packages/runner"
   },
   "bugs": {
-    "url": "https://github.com/codyde/openbuilder/issues"
+    "url": "https://github.com/codyde/hatchway/issues"
   },
-  "homepage": "https://github.com/codyde/openbuilder#readme",
+  "homepage": "https://github.com/codyde/hatchway#readme",
   "preferGlobal": true,
   "scripts": {
     "build": "rollup -c",
@@ -58,8 +58,8 @@
     "zod-to-json-schema": "^3.24.1"
   },
   "devDependencies": {
-    "@openbuilder/cli": "workspace:*",
-    "@openbuilder/agent-core": "workspace:*",
+    "@hatchway/cli": "workspace:*",
+    "@hatchway/agent-core": "workspace:*",
     "@rollup/plugin-commonjs": "^28.0.0",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.0",

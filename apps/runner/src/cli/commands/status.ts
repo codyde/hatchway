@@ -5,7 +5,7 @@ import { logger } from '../utils/logger.js';
 import { configManager } from '../utils/config-manager.js';
 
 export async function statusCommand() {
-  logger.section('OpenBuilder Runner Status');
+  logger.section('Hatchway Runner Status');
 
   // Check if initialized
   const isInitialized = configManager.isInitialized();
@@ -14,7 +14,7 @@ export async function statusCommand() {
 
   if (!isInitialized) {
     logger.log('');
-    logger.warn('Run "openbuilder init" to initialize');
+    logger.warn('Run "hatchway init" to initialize');
     return;
   }
 
@@ -88,12 +88,12 @@ export async function statusCommand() {
   // Next steps
   if (validation.valid) {
     logger.info('Ready to run! Use:');
-    logger.log(`  ${chalk.cyan('openbuilder run')}     - Start local full stack`);
-    logger.log(`  ${chalk.cyan('openbuilder runner')} - Connect to remote server`);
+    logger.log(`  ${chalk.cyan('hatchway run')}     - Start local full stack`);
+    logger.log(`  ${chalk.cyan('hatchway runner')} - Connect to remote server`);
   } else {
     logger.info('Fix configuration errors with:');
-    logger.log(`  ${chalk.cyan('openbuilder config set <key> <value>')}`);
-    logger.log(`  or ${chalk.cyan('openbuilder init')} to reconfigure`);
+    logger.log(`  ${chalk.cyan('hatchway config set <key> <value>')}`);
+    logger.log(`  or ${chalk.cyan('hatchway init')} to reconfigure`);
   }
   logger.log('');
 }

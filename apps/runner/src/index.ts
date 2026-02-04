@@ -28,9 +28,9 @@ import {
   type ClaudeModelId,
   type OpenCodeModelId,
   setTemplatesPath,
-} from "@openbuilder/agent-core";
-import { CLAUDE_CLI_TOOL_REGISTRY } from "@openbuilder/agent-core/lib/claude/tools";
-import { buildLogger } from "@openbuilder/agent-core/lib/logging/build-logger";
+} from "@hatchway/agent-core";
+import { CLAUDE_CLI_TOOL_REGISTRY } from "@hatchway/agent-core/lib/claude/tools";
+import { buildLogger } from "@hatchway/agent-core/lib/logging/build-logger";
 import { createBuildStream } from "./lib/build/engine.js";
 import { startDevServer, startDevServerAsync, stopDevServer, checkPortInUse, findAvailablePort } from "./lib/process-manager.js";
 import { getWorkspaceRoot } from "./lib/workspace.js";
@@ -2834,7 +2834,7 @@ export async function startRunner(options: RunnerOptions = {}) {
           // Detect framework from generated files
           let detectedFramework: string | null = null;
           try {
-            const { detectFrameworkFromFilesystem } = await import('@openbuilder/agent-core/lib/port-allocator');
+            const { detectFrameworkFromFilesystem } = await import('@hatchway/agent-core/lib/port-allocator');
             const framework = await detectFrameworkFromFilesystem(projectDirectory);
             detectedFramework = framework;
             

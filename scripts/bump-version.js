@@ -23,7 +23,7 @@ const BUMP_TYPE = process.argv[2] || 'patch';
 const PACKAGE_FILES = [
   'package.json',
   'apps/runner/package.json',
-  'apps/openbuilder/package.json',
+  'apps/hatchway/package.json',
   'packages/agent-core/package.json',
 ];
 

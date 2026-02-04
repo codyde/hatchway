@@ -1,13 +1,13 @@
 {
-  "name": "@openbuilder/cli",
+  "name": "@hatchway/cli",
   "version": "0.50.48",
-  "description": "OpenBuilder CLI - Build AI-powered apps with Claude. Just run: npx @openbuilder/cli runner",
+  "description": "Hatchway CLI - Build AI-powered apps with Claude. Just run: npx @hatchway/cli runner",
   "private": false,
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "openbuilder-cli": "./bin/openbuilder.js",
-    "openbuilder": "./bin/openbuilder.js"
+    "hatchway-cli": "./bin/hatchway.js",
+    "hatchway": "./bin/hatchway.js"
   },
   "files": [
     "bin/",
@@ -20,7 +20,7 @@
     "node": ">=18.0.0"
   },
   "keywords": [
-    "openbuilder",
+    "hatchway",
     "ai",
     "claude",
     "code-generation",
@@ -32,13 +32,13 @@
   "author": "Cody De Arkland",
   "repository": {
     "type": "git",
-    "url": "https://github.com/codyde/openbuilder.git",
+    "url": "https://github.com/codyde/hatchway.git",
     "directory": "apps/runner"
   },
   "bugs": {
-    "url": "https://github.com/codyde/openbuilder/issues"
+    "url": "https://github.com/codyde/hatchway/issues"
   },
-  "homepage": "https://github.com/codyde/openbuilder#readme",
+  "homepage": "https://github.com/codyde/hatchway#readme",
   "preferGlobal": true,
   "scripts": {
     "dev": "RUNNER_WS_URL=ws://localhost:3000/ws/runner tsx --import ./src/instrument.ts src/index.ts",
@@ -50,12 +50,12 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.29",
-    "@openbuilder/droid-sdk": "^1.0.0",
+    "@hatchway/droid-sdk": "^1.0.0",
     "@clack/prompts": "^0.11.0",
     "@openai/codex-sdk": "^0.93.0",
     "@sentry/node": "^10.37.0",
-    "@openbuilder/agent-core": "workspace:*",
-    "@openbuilder/opencode-client": "workspace:*",
+    "@hatchway/agent-core": "workspace:*",
+    "@hatchway/opencode-client": "workspace:*",
     "chalk": "^5.6.2",
     "commander": "^14.0.1",
     "conf": "^15.0.2",

@@ -18,7 +18,7 @@ export class Prompts {
    * Prompt for initial configuration
    */
   async promptInit(): Promise<InitPromptAnswers> {
-    const defaultWorkspace = join(homedir(), 'openbuilder-workspace');
+    const defaultWorkspace = join(homedir(), 'hatchway-workspace');
 
     const answers = await inquirer.prompt([
       {

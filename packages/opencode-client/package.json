@@ -1,5 +1,5 @@
 {
-  "name": "@openbuilder/opencode-client",
+  "name": "@hatchway/opencode-client",
   "version": "0.27.3",
   "private": true,
   "type": "module",
