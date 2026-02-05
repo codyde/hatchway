@@ -1,6 +1,6 @@
 {
   "name": "hatchway-monorepo",
-  "version": "0.50.51",
+  "version": "0.50.52",
   "description": "AI-powered project generation platform with Claude AI and remote runner architecture",
   "private": true,
   "packageManager": "pnpm@9.15.0",

@@ -1,6 +1,6 @@
 {
   "name": "@hatchway/cli",
-  "version": "0.50.51",
+  "version": "0.50.52",
   "description": "Hatchway CLI - Build AI-powered apps with Claude. Just run: npx @hatchway/cli runner",
   "private": false,
   "type": "module",
