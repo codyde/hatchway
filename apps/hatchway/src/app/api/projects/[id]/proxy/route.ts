@@ -315,6 +315,35 @@ export async function GET(
     return proxyPrefix + encodeURIComponent(path);
   }
 
+  // CRITICAL: Override webpack's public path for Next.js chunk loading
+  // Webpack uses __webpack_public_path__ (which becomes __webpack_require__.p) to construct chunk URLs
+  // We need to override this BEFORE webpack bootstrap runs
+  // Setting it to empty string makes webpack use relative paths, which our base tag then handles
+  window.__webpack_public_path__ = proxyPrefix.replace('?path=', '?path=%2F');
+  
+  // Also try to intercept when webpack sets __webpack_require__.p
+  // This handles cases where webpack has already bootstrapped
+  Object.defineProperty(window, '__webpack_require__', {
+    configurable: true,
+    set: function(wr) {
+      if (wr && typeof wr === 'object') {
+        // Intercept the 'p' property (publicPath) when it gets set
+        var originalP = wr.p;
+        Object.defineProperty(wr, 'p', {
+          configurable: true,
+          get: function() { return proxyPrefix.replace('?path=', '?path=%2F'); },
+          set: function(v) { originalP = v; }
+        });
+      }
+      Object.defineProperty(window, '__webpack_require__', {
+        configurable: true,
+        writable: true,
+        value: wr
+      });
+    },
+    get: function() { return undefined; }
+  });
+
   // Path normalization for TanStack Router
   try {
     var url = new URL(window.location.href);
