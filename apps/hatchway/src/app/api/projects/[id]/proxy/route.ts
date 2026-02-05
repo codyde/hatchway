@@ -291,11 +291,33 @@ export async function GET(
 (function() {
   var proxyPrefix = '/api/projects/${id}/proxy?path=';
   
+  // Helper to extract path from URL (handles both relative and absolute URLs)
+  function extractPath(url) {
+    if (!url || typeof url !== 'string') return null;
+    
+    // Already a relative path
+    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('//')) {
+      return url;
+    }
+    
+    // Absolute URL - extract pathname
+    try {
+      var parsed = new URL(url);
+      return parsed.pathname + parsed.search;
+    } catch (e) {
+      return null;
+    }
+  }
+  
   // Helper to check if a path should be proxied
-  function shouldProxy(path) {
-    if (!path || typeof path !== 'string') return false;
-    if (path.includes('/api/projects/')) return false;
-    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('//')) return false;
+  function shouldProxy(url) {
+    if (!url || typeof url !== 'string') return false;
+    if (url.includes('/api/projects/')) return false;
+    
+    // Extract path from URL (works for both relative and absolute URLs)
+    var path = extractPath(url);
+    if (!path) return false;
+    
     // Check for known framework paths that need proxying
     if (path.startsWith('/src/') || 
         path.startsWith('/@') || 
@@ -311,7 +333,9 @@ export async function GET(
     return false;
   }
   
-  function proxyUrl(path) {
+  function proxyUrl(url) {
+    var path = extractPath(url);
+    if (!path) return url;
     return proxyPrefix + encodeURIComponent(path);
   }
 
@@ -360,7 +384,9 @@ export async function GET(
   var originalFetch = window.fetch;
   window.fetch = function(resource, options) {
     if (typeof resource === 'string' && shouldProxy(resource)) {
-      return originalFetch(proxyUrl(resource), options);
+      var proxied = proxyUrl(resource);
+      console.log('[Hatchway Proxy] Intercepted fetch:', resource, '->', proxied);
+      return originalFetch(proxied, options);
     }
     return originalFetch(resource, options);
   };
@@ -393,7 +419,9 @@ export async function GET(
     Object.defineProperty(HTMLScriptElement.prototype, 'src', {
       set: function(value) {
         if (typeof value === 'string' && shouldProxy(value)) {
-          value = proxyUrl(value);
+          var proxied = proxyUrl(value);
+          console.log('[Hatchway Proxy] Intercepted script.src:', value, '->', proxied);
+          value = proxied;
         }
         scriptSrcDescriptor.set.call(this, value);
       },
@@ -506,6 +534,68 @@ export async function GET(
       (path.endsWith('.css') && !path.includes('?direct'))
     ) {
       let js = await response.text();
+      
+      // CRITICAL: Rewrite webpack runtime to use proxy for chunk loading
+      // This handles Next.js dynamic imports (next/dynamic)
+      // The webpack runtime sets __webpack_require__.p (publicPath) which is used for chunk URLs
+      // In Next.js dev, the webpack runtime is in main-app.js, webpack.js, or other chunk files
+      const isWebpackRuntime = (path.includes('webpack') || path.includes('main-app') || path.includes('main.js')) && path.includes('.js');
+      const isNextChunk = path.includes('/_next/static/chunks/');
+      const hasWebpackRequire = js.includes('__webpack_require__');
+      
+      if ((isWebpackRuntime || isNextChunk) && hasWebpackRequire) {
+        const proxyPrefix = `/api/projects/${id}/proxy?path=`;
+        
+        // Replace the publicPath assignment in webpack runtime
+        // Pattern: __webpack_require__.p = "/_next/static/chunks/";
+        // Or: __webpack_require__.p = "/";
+        // Or minified: a.p="/_next/static/chunks/"
+        js = js.replace(
+          /(__webpack_require__|[a-zA-Z])\.p\s*=\s*["']([^"']*)["']/g,
+          (match, varName, publicPath) => {
+            // Only rewrite if it's a Next.js path
+            if (publicPath === '/' || publicPath.startsWith('/_next/')) {
+              console.log(`[proxy] Rewriting webpack publicPath: ${publicPath} -> ${proxyPrefix}`);
+              return `${varName}.p="${proxyPrefix}"`;
+            }
+            return match;
+          }
+        );
+        
+        // Also handle the chunk URL construction in __webpack_require__.l
+        // Pattern: script.src = url; where url is constructed from publicPath + chunkId
+        // We need to intercept this more directly by wrapping the load function
+        
+        // Inject a wrapper around __webpack_require__.l to intercept chunk URLs
+        // This runs AFTER webpack runtime but BEFORE any chunks are loaded
+        // Inject whenever we see __webpack_require__.l defined in the file
+        const hasChunkLoader = js.includes('__webpack_require__.l');
+        if (hasChunkLoader) {
+          const chunkInterceptor = `
+;(function(){
+  var proxyPrefix = "${proxyPrefix}";
+  var origL = __webpack_require__.l;
+  if (origL) {
+    __webpack_require__.l = function(url, done, key, chunkId) {
+      // If URL starts with the same origin or is relative, proxy it
+      if (url && typeof url === 'string') {
+        var currentOrigin = window.location.origin;
+        if (url.startsWith(currentOrigin + '/_next/')) {
+          // Extract path from absolute URL
+          url = proxyPrefix + encodeURIComponent(url.substring(currentOrigin.length));
+          console.log('[Hatchway] Intercepted chunk URL:', url);
+        } else if (url.startsWith('/_next/')) {
+          url = proxyPrefix + encodeURIComponent(url);
+          console.log('[Hatchway] Intercepted relative chunk URL:', url);
+        }
+      }
+      return origL.call(this, url, done, key, chunkId);
+    };
+  }
+})();`;
+          js = js + chunkInterceptor;
+        }
+      }
 
       // CRITICAL: Handle Vite ?url responses specially
       // They export URL strings like: export default "/src/styles.css"
