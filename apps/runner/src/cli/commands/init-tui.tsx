@@ -513,4 +513,3 @@ async function executeInitFlow(
     runnerId: 'local',
   };
 }
-}

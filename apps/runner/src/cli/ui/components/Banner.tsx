@@ -14,23 +14,24 @@ const colors = {
 
 /**
  * ASCII art banner component - centered with cyan/purple gradient
+ * HATCH in cyan, WAY in purple
  */
 export function Banner() {
   const lines = [
-    { open: ' ██████╗ ██████╗ ███████╗███╗   ██╗', builder: '██████╗ ██╗   ██╗██╗██╗     ██████╗ ███████╗██████╗ ' },
-    { open: '██╔═══██╗██╔══██╗██╔════╝████╗  ██║', builder: '██╔══██╗██║   ██║██║██║     ██╔══██╗██╔════╝██╔══██╗' },
-    { open: '██║   ██║██████╔╝█████╗  ██╔██╗ ██║', builder: '██████╔╝██║   ██║██║██║     ██║  ██║█████╗  ██████╔╝' },
-    { open: '██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║', builder: '██╔══██╗██║   ██║██║██║     ██║  ██║██╔══╝  ██╔══██╗' },
-    { open: '╚██████╔╝██║     ███████╗██║ ╚████║', builder: '██████╔╝╚██████╔╝██║███████╗██████╔╝███████╗██║  ██║' },
-    { open: ' ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝', builder: '╚═════╝  ╚═════╝ ╚═╝╚══════╝╚═════╝ ╚══════╝╚═╝  ╚═╝' },
+    { hatch: '██╗  ██╗ █████╗ ████████╗ ██████╗██╗  ██╗', way: '██╗    ██╗ █████╗ ██╗   ██╗' },
+    { hatch: '██║  ██║██╔══██╗╚══██╔══╝██╔════╝██║  ██║', way: '██║    ██║██╔══██╗╚██╗ ██╔╝' },
+    { hatch: '███████║███████║   ██║   ██║     ███████║', way: '██║ █╗ ██║███████║ ╚████╔╝ ' },
+    { hatch: '██╔══██║██╔══██║   ██║   ██║     ██╔══██║', way: '██║███╗██║██╔══██║  ╚██╔╝  ' },
+    { hatch: '██║  ██║██║  ██║   ██║   ╚██████╗██║  ██║', way: '╚███╔███╔╝██║  ██║   ██║   ' },
+    { hatch: '╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝    ╚═════╝╚═╝  ╚═╝', way: ' ╚══╝╚══╝ ╚═╝  ╚═╝   ╚═╝   ' },
   ];
 
   return (
     <Box flexDirection="column" alignItems="center" marginTop={2}>
       {lines.map((line, index) => (
         <Box key={index}>
-          <Text color={colors.cyan}>{line.open}</Text>
-          <Text color={colors.brightPurple}>{line.builder}</Text>
+          <Text color={colors.cyan}>{line.hatch}</Text>
+          <Text color={colors.brightPurple}>{line.way}</Text>
         </Box>
       ))}
     </Box>

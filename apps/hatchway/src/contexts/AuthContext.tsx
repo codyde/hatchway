@@ -54,6 +54,22 @@ export function AuthProvider({ children, isLocalMode = false }: AuthProviderProp
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingLoading, setOnboardingLoading] = useState(true);
 
+  // In local mode, ensure the session cookie is set via API (properly signed/httpOnly)
+  useEffect(() => {
+    if (isLocalMode && typeof window !== 'undefined') {
+      // Call the local-session endpoint to set the httpOnly session cookie
+      fetch('/api/auth/local-session')
+        .then(res => {
+          if (res.ok) {
+            console.log('[AuthContext] Local mode session cookie initialized');
+          }
+        })
+        .catch(err => {
+          console.error('[AuthContext] Failed to init local session:', err);
+        });
+    }
+  }, [isLocalMode]);
+
   // Fetch onboarding status when authenticated
   const fetchOnboardingStatus = useCallback(async () => {
     // Ensure we're on the client side before accessing localStorage

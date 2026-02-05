@@ -1,7 +1,7 @@
 import { getAuth } from "./auth";
 import { headers } from "next/headers";
 import { db } from "@hatchway/agent-core";
-import { projects, runnerKeys } from "@hatchway/agent-core/lib/db/schema";
+import { projects, runnerKeys, users, sessions } from "@hatchway/agent-core/lib/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { createHash } from "crypto";
 
@@ -16,15 +16,77 @@ export const LOCAL_USER = {
   updatedAt: new Date(),
 } as const;
 
+// Local mode session - a real session token that Better Auth will recognize
+export const LOCAL_SESSION_ID = "00000000-0000-0000-0000-000000000001";
+export const LOCAL_SESSION_TOKEN = "local-session-token-for-development";
+
+/**
+ * Ensure the local user and session exist in the database
+ * This creates a real Better Auth session so OAuth flows work properly
+ */
+export async function ensureLocalUserExists(): Promise<void> {
+  if (!isLocalMode()) return;
+
+  try {
+    // Check if local user exists
+    const existingUser = await db.query.users.findFirst({
+      where: eq(users.id, LOCAL_USER.id),
+    });
+
+    if (!existingUser) {
+      // Create the local user
+      await db.insert(users).values({
+        id: LOCAL_USER.id,
+        name: LOCAL_USER.name,
+        email: LOCAL_USER.email,
+        emailVerified: LOCAL_USER.emailVerified,
+        image: LOCAL_USER.image,
+        hasCompletedOnboarding: true,
+      }).onConflictDoNothing();
+      
+      console.log('[auth] Created local user in database');
+    }
+
+    // Check if local session exists
+    const existingSession = await db.query.sessions.findFirst({
+      where: eq(sessions.id, LOCAL_SESSION_ID),
+    });
+
+    if (!existingSession) {
+      // Create a real session in the database that Better Auth will recognize
+      await db.insert(sessions).values({
+        id: LOCAL_SESSION_ID,
+        userId: LOCAL_USER.id,
+        token: LOCAL_SESSION_TOKEN,
+        expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 10), // 10 years
+        ipAddress: "127.0.0.1",
+        userAgent: "Hatchway Local Mode",
+      }).onConflictDoNothing();
+      
+      console.log('[auth] Created local session in database');
+    } else {
+      // Update expiry to keep session fresh
+      await db.update(sessions)
+        .set({ 
+          expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 10),
+          updatedAt: new Date(),
+        })
+        .where(eq(sessions.id, LOCAL_SESSION_ID));
+    }
+  } catch (error) {
+    console.error('[auth] Failed to ensure local user exists:', error);
+  }
+}
+
 export const LOCAL_SESSION = {
   user: LOCAL_USER,
   session: {
-    id: "local-session",
+    id: LOCAL_SESSION_ID,
     userId: LOCAL_USER.id,
-    token: "local-token",
+    token: LOCAL_SESSION_TOKEN,
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365), // 1 year
     ipAddress: "127.0.0.1",
-    userAgent: "local",
+    userAgent: "Hatchway Local Mode",
     createdAt: new Date(),
     updatedAt: new Date(),
   },

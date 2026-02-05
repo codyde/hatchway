@@ -3,6 +3,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { genericOAuth } from "better-auth/plugins";
 import { db } from "@hatchway/agent-core";
 import { users, sessions, accounts, verifications } from "@hatchway/agent-core/lib/db/schema";
+import { encryptToken, isEncryptionConfigured } from "./encryption";
 
 // Get trusted origins for CORS/auth
 function getTrustedOrigins(): string[] {
@@ -72,6 +73,47 @@ function createAuth() {
         generateId: false,
       },
     },
+    // Encrypt OAuth tokens before storing in database
+    databaseHooks: {
+      account: {
+        create: {
+          before: async (account) => {
+            // Only encrypt if encryption is configured
+            if (!isEncryptionConfigured()) {
+              console.warn('Token encryption not configured - storing tokens in plaintext');
+              return { data: account };
+            }
+            
+            const encryptedAccount = { ...account };
+            if (account.accessToken) {
+              encryptedAccount.accessToken = encryptToken(account.accessToken);
+            }
+            if (account.refreshToken) {
+              encryptedAccount.refreshToken = encryptToken(account.refreshToken);
+            }
+            return { data: encryptedAccount };
+          },
+        },
+        update: {
+          before: async (account) => {
+            // Only encrypt if encryption is configured
+            if (!isEncryptionConfigured()) {
+              return { data: account };
+            }
+            
+            const encryptedAccount = { ...account };
+            // Only encrypt if the token is being updated (not already encrypted)
+            if (account.accessToken && !account.accessToken.includes(':')) {
+              encryptedAccount.accessToken = encryptToken(account.accessToken);
+            }
+            if (account.refreshToken && !account.refreshToken.includes(':')) {
+              encryptedAccount.refreshToken = encryptToken(account.refreshToken);
+            }
+            return { data: encryptedAccount };
+          },
+        },
+      },
+    },
     // Session configuration
     session: {
       expiresIn: 60 * 60 * 24 * 7, // 7 days in seconds
@@ -119,7 +161,8 @@ function createAuth() {
             clientSecret: process.env.GITHUB_OAUTH_CLIENT_SECRET!,
             authorizationUrl: "https://github.com/login/oauth/authorize",
             tokenUrl: "https://github.com/login/oauth/access_token",
-            scopes: ["read:user", "user:email"],
+            // Request repo scope for GitHub repository creation
+            scopes: ["read:user", "user:email", "repo"],
             pkce: false, // GitHub doesn't support PKCE
             getUserInfo: async (tokens) => {
               // Fetch user info from GitHub API

@@ -4,7 +4,7 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"],
-      "env": ["NEXT_PUBLIC_*", "NODE_ENV", "SENTRY_*"]
+      "env": ["NEXT_PUBLIC_*", "NODE_ENV", "SENTRY_*", "HATCHWAY_LOCAL_MODE"]
     },
     "dev": {
       "cache": false,

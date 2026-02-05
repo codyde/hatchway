@@ -1,7 +1,7 @@
 import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({
-  schema: './node_modules/@hatchway/agent-core/dist/lib/db/schema.js',
+  schema: '../../packages/agent-core/src/lib/db/schema.ts',
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {

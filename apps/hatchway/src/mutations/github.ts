@@ -2,6 +2,90 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { GitHubStatus, UpdateGitHubSettingsRequest } from '@hatchway/agent-core';
 
 // ============================================================================
+// Create GitHub Repository
+// ============================================================================
+
+export interface CreateGitHubRepoRequest {
+  visibility: 'public' | 'private';
+  name?: string;
+  description?: string;
+}
+
+export interface CreateGitHubRepoResponse {
+  success: boolean;
+  repo?: string;
+  url?: string;
+  cloneUrl?: string;
+  branch?: string;
+  error?: string;
+  needsReauth?: boolean;
+}
+
+async function createGitHubRepo(
+  projectId: string,
+  request: CreateGitHubRepoRequest
+): Promise<CreateGitHubRepoResponse> {
+  const res = await fetch(`/api/projects/${projectId}/github/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+
+  const data = await res.json();
+  
+  // Even on error responses, we want to return the full response
+  // so the caller can check needsReauth
+  if (!res.ok && !data.needsReauth) {
+    throw new Error(data.error || 'Failed to create GitHub repository');
+  }
+
+  return data;
+}
+
+/**
+ * Hook to create a new GitHub repository for a project
+ * 
+ * Usage:
+ * ```
+ * const createRepo = useCreateGitHubRepo(projectId);
+ * const result = await createRepo.mutateAsync({ visibility: 'public' });
+ * if (result.needsReauth) {
+ *   // Redirect to GitHub OAuth
+ * }
+ * ```
+ */
+export function useCreateGitHubRepo(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateGitHubRepoRequest) =>
+      createGitHubRepo(projectId, request),
+    onSuccess: (data) => {
+      if (data.success) {
+        // Update the GitHub status in cache
+        queryClient.setQueryData(['projects', projectId, 'github'], { 
+          status: {
+            isConnected: true,
+            repo: data.repo,
+            url: data.url,
+            branch: data.branch,
+            lastPushedAt: null,
+            autoPush: false,
+            lastSyncAt: null,
+            meta: null,
+          } 
+        });
+        // Invalidate project query since GitHub fields are on the project
+        queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
+      }
+    },
+    onError: (err) => {
+      console.error('Failed to create GitHub repository:', err);
+    },
+  });
+}
+
+// ============================================================================
 // GitHub Settings
 // ============================================================================
 

@@ -144,6 +144,13 @@ export const projects = pgTable('projects', {
   neondbDatabase: text('neondb_database'), // Database name
   neondbCreatedAt: timestamp('neondb_created_at'), // When database was provisioned
   neondbExpiresAt: timestamp('neondb_expires_at'), // When unclaimed DB expires (72 hours)
+  // Railway integration fields
+  railwayProjectId: text('railway_project_id'), // Railway project ID
+  railwayServiceId: text('railway_service_id'), // Railway service ID
+  railwayEnvironmentId: text('railway_environment_id'), // Railway environment ID (production)
+  railwayDomain: text('railway_domain'), // e.g., "myapp-production.up.railway.app"
+  railwayDeploymentStatus: text('railway_deployment_status'), // 'deploying' | 'success' | 'failed' | 'crashed'
+  railwayLastDeployedAt: timestamp('railway_last_deployed_at'), // Last successful deployment
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => ({
@@ -252,6 +259,100 @@ export const generationNotes = pgTable('generation_notes', {
     .where(sql`${table.textId} is not null`),
 }));
 
+// ============================================================================
+// Railway Integration Tables
+// ============================================================================
+
+// Railway OAuth connections - stores user's Railway OAuth tokens
+export const railwayConnections = pgTable('railway_connections', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  
+  // Encrypted OAuth tokens
+  accessTokenEncrypted: text('access_token_encrypted').notNull(),
+  refreshTokenEncrypted: text('refresh_token_encrypted'),
+  accessTokenExpiresAt: timestamp('access_token_expires_at'),
+  
+  // Railway user info (from OAuth)
+  railwayUserId: text('railway_user_id').notNull(), // "sub" claim from OIDC
+  railwayEmail: text('railway_email'),
+  railwayName: text('railway_name'),
+  
+  // Selected workspaces from OAuth consent
+  defaultWorkspaceId: text('default_workspace_id'),
+  defaultWorkspaceName: text('default_workspace_name'),
+  grantedWorkspaces: jsonb('granted_workspaces').$type<Array<{ id: string; name: string }>>(),
+  
+  // Connection status
+  status: text('status').notNull().default('active'), // 'active' | 'disconnected' | 'expired'
+  
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  userIdUnique: uniqueIndex('railway_connections_user_id_unique').on(table.userId),
+  railwayUserIdIdx: index('railway_connections_railway_user_id_idx').on(table.railwayUserId),
+}));
+
+// Railway deployments history - tracks deployments to Railway
+export const railwayDeployments = pgTable('railway_deployments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  
+  // Railway resource IDs
+  railwayProjectId: text('railway_project_id').notNull(),
+  railwayServiceId: text('railway_service_id').notNull(),
+  railwayDeploymentId: text('railway_deployment_id').notNull(),
+  railwayEnvironmentId: text('railway_environment_id'),
+  
+  // Deployment info
+  status: text('status').notNull(), // Railway deployment status
+  url: text('url'), // Deployment URL
+  commitSha: text('commit_sha'), // Git commit deployed
+  
+  // Timestamps
+  deployedAt: timestamp('deployed_at').notNull().defaultNow(),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  projectIdIdx: index('railway_deployments_project_id_idx').on(table.projectId),
+  railwayDeploymentIdIdx: index('railway_deployments_railway_deployment_id_idx').on(table.railwayDeploymentId),
+}));
+
+// ============================================================================
+// GitHub Integration Tables
+// ============================================================================
+
+// GitHub OAuth connections - stores user's GitHub OAuth tokens for repo operations
+export const githubConnections = pgTable('github_connections', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  
+  // Encrypted OAuth tokens
+  accessTokenEncrypted: text('access_token_encrypted').notNull(),
+  
+  // GitHub user info (from OAuth)
+  githubUserId: text('github_user_id').notNull(), // GitHub user ID
+  githubUsername: text('github_username').notNull(), // GitHub username/login
+  githubEmail: text('github_email'),
+  githubAvatarUrl: text('github_avatar_url'),
+  
+  // OAuth scopes granted
+  scopes: text('scopes'), // Comma-separated list of scopes
+  
+  // Connection status
+  status: text('status').notNull().default('active'), // 'active' | 'disconnected' | 'expired'
+  
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  userIdUnique: uniqueIndex('github_connections_user_id_unique').on(table.userId),
+  githubUserIdIdx: index('github_connections_github_user_id_idx').on(table.githubUserId),
+}));
+
+// ============================================================================
+// Server Operations
+// ============================================================================
+
 // Server operations tracking table for reliable status management
 export const serverOperations = pgTable('server_operations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -299,3 +400,13 @@ export type GenerationSession = typeof generationSessions.$inferSelect;
 export type GenerationTodo = typeof generationTodos.$inferSelect;
 export type GenerationToolCall = typeof generationToolCalls.$inferSelect;
 export type GenerationNote = typeof generationNotes.$inferSelect;
+
+// Railway integration types
+export type RailwayConnection = typeof railwayConnections.$inferSelect;
+export type NewRailwayConnection = typeof railwayConnections.$inferInsert;
+export type RailwayDeployment = typeof railwayDeployments.$inferSelect;
+export type NewRailwayDeployment = typeof railwayDeployments.$inferInsert;
+
+// GitHub integration types
+export type GitHubConnection = typeof githubConnections.$inferSelect;
+export type NewGitHubConnection = typeof githubConnections.$inferInsert;

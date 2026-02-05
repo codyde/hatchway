@@ -1,24 +1,22 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Github, Loader2, Globe, Lock, ChevronDown } from 'lucide-react';
+import { Github, Loader2, Globe, Lock, ChevronDown, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useGitHubStatus } from '@/queries/github';
+import { useGitHubStatus, useGitHubConnection } from '@/queries/github';
+import { useCreateGitHubRepo } from '@/mutations/github';
 import { GitHubDropdown } from './GitHubDropdown';
+import { useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
 
 export type RepoVisibility = 'public' | 'private';
-
-// GitHub chat message - includes visibility preference
-// The skill file (.claude/skills/github-setup/SKILL.md) contains the detailed instructions
-function getSetupMessage(visibility: RepoVisibility): string {
-  return `Set up GitHub repository for this project using the github-setup skill. Create a ${visibility} repository.`;
-}
 
 interface GitHubButtonProps {
   projectId: string;
   projectSlug: string;
-  onSetupClick?: (visibility: RepoVisibility) => void;
+  /** Callback after repo is created - receives the repo URL for skill to push code */
+  onRepoCreated?: (repoUrl: string, cloneUrl: string) => void;
   /** Callback to trigger a push via agent */
   onPushClick?: () => void;
   className?: string;
@@ -29,22 +27,149 @@ interface GitHubButtonProps {
 
 /**
  * GitHub integration button that shows either:
- * - "Setup GitHub" button when not connected (triggers chat flow)
+ * - "Setup GitHub" button when not connected (creates repo via API, then triggers code push)
  * - GitHub dropdown with repo info when connected
  */
 export function GitHubButton({
   projectId,
   projectSlug,
-  onSetupClick,
+  onRepoCreated,
   onPushClick,
   className,
   variant = 'default',
   isGenerating = false,
 }: GitHubButtonProps) {
   const { data: status, isLoading, refetch } = useGitHubStatus(projectId);
-  const [isSettingUp, setIsSettingUp] = useState(false);
+  const { data: githubConnection, isLoading: isLoadingConnection, refetch: refetchConnection } = useGitHubConnection();
+  const createRepoMutation = useCreateGitHubRepo(projectId);
+  const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  
   const [showDropdown, setShowDropdown] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isProcessingPending, setIsProcessingPending] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const hasProcessedUrlParams = useRef(false);
+
+  // Function to create repo - extracted so it can be called from pending flow
+  const createRepo = useCallback(async (visibility: RepoVisibility) => {
+    setError(null);
+    setShowDropdown(false);
+    
+    try {
+      const result = await createRepoMutation.mutateAsync({ visibility });
+      
+      if (result.needsReauth) {
+        // Redirect to GitHub OAuth
+        redirectToGitHubOAuth(visibility);
+        return;
+      }
+
+      if (result.success && result.url && result.cloneUrl) {
+        // Repo created successfully - trigger skill to push code
+        onRepoCreated?.(result.url, result.cloneUrl);
+      } else if (result.error) {
+        setError(result.error);
+      }
+    } catch (err) {
+      console.error('Failed to create GitHub repo:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create repository');
+    }
+  }, [createRepoMutation, onRepoCreated]);
+
+  // Redirect to GitHub OAuth connect endpoint
+  const redirectToGitHubOAuth = useCallback((visibility: RepoVisibility) => {
+    const connectUrl = new URL('/api/auth/github/connect', window.location.origin);
+    connectUrl.searchParams.set('returnUrl', window.location.pathname);
+    connectUrl.searchParams.set('visibility', visibility);
+    connectUrl.searchParams.set('projectId', projectId);
+    window.location.href = connectUrl.toString();
+  }, [projectId]);
+
+  // Complete GitHub connection after OAuth callback
+  const completeGitHubConnection = useCallback(async (): Promise<{ projectId?: string; visibility?: string } | null> => {
+    try {
+      const response = await fetch('/api/auth/github/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to complete GitHub connection');
+      }
+      
+      const data = await response.json();
+      return data.pendingAction || null;
+    } catch (err) {
+      console.error('Failed to complete GitHub connection:', err);
+      throw err;
+    }
+  }, []);
+
+  // Check URL params for pending GitHub action (after OAuth callback)
+  useEffect(() => {
+    if (hasProcessedUrlParams.current || isLoadingConnection) {
+      return;
+    }
+
+    // New flow: github_connect_pending is set when returning from better-auth OAuth
+    const githubConnectPending = searchParams.get('github_connect_pending');
+    const pendingProjectIdFromUrl = searchParams.get('projectId');
+    const pendingVisibilityFromUrl = searchParams.get('visibility') as RepoVisibility | null;
+    const githubError = searchParams.get('github_error');
+
+    // Handle errors from OAuth
+    if (githubError) {
+      hasProcessedUrlParams.current = true;
+      setError(`GitHub connection failed: ${githubError}`);
+      // Clean up URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete('github_error');
+      window.history.replaceState({}, '', url.toString());
+      return;
+    }
+
+    // Handle successful OAuth return - complete the connection
+    if (githubConnectPending === 'true' && pendingProjectIdFromUrl === projectId) {
+      hasProcessedUrlParams.current = true;
+      
+      // Clean up URL params first
+      const url = new URL(window.location.href);
+      url.searchParams.delete('github_connect_pending');
+      url.searchParams.delete('projectId');
+      url.searchParams.delete('visibility');
+      window.history.replaceState({}, '', url.toString());
+
+      // Complete the GitHub connection and get pending action
+      setIsProcessingPending(true);
+      
+      completeGitHubConnection()
+        .then((pendingAction) => {
+          // Refetch connection status
+          queryClient.invalidateQueries({ queryKey: ['user', 'github-connection'] });
+          refetchConnection();
+          
+          // Use visibility from URL or from pending action (cookie)
+          const visibility = pendingVisibilityFromUrl || pendingAction?.visibility as RepoVisibility;
+          
+          if (visibility) {
+            // Small delay to let the query refetch
+            setTimeout(() => {
+              createRepo(visibility).finally(() => {
+                setIsProcessingPending(false);
+              });
+            }, 500);
+          } else {
+            setIsProcessingPending(false);
+          }
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : 'Failed to connect GitHub');
+          setIsProcessingPending(false);
+        });
+    }
+  }, [searchParams, projectId, isLoadingConnection, queryClient, createRepo, completeGitHubConnection, refetchConnection]);
 
   // Track if we were generating and now stopped - trigger a refetch
   const wasGeneratingRef = useRef(isGenerating);
@@ -68,25 +193,28 @@ export function GitHubButton({
   }, []);
 
   const handleButtonClick = () => {
-    if (!isSettingUp && !isGenerating) {
+    if (!createRepoMutation.isPending && !isGenerating && !isProcessingPending) {
       setShowDropdown(!showDropdown);
+      setError(null);
     }
   };
 
-  const handleVisibilitySelect = (visibility: RepoVisibility) => {
+  const handleVisibilitySelect = async (visibility: RepoVisibility) => {
+    setError(null);
     setShowDropdown(false);
-    setIsSettingUp(true);
-    onSetupClick?.(visibility);
+    
+    // Check if user has GitHub connected with repo permissions
+    if (!githubConnection?.connected || githubConnection.needsReauth || !githubConnection.hasRepoScope) {
+      // Redirect directly to GitHub OAuth - skip the intermediate prompt
+      redirectToGitHubOAuth(visibility);
+      return;
+    }
+
+    // User has GitHub connected - create the repo via API
+    await createRepo(visibility);
   };
 
-  // Reset isSettingUp when generation completes
-  useEffect(() => {
-    if (!isGenerating && isSettingUp) {
-      setIsSettingUp(false);
-    }
-  }, [isGenerating, isSettingUp]);
-
-  if (isLoading) {
+  if (isLoading || isLoadingConnection) {
     return (
       <div className={cn(
         'flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400',
@@ -112,9 +240,7 @@ export function GitHubButton({
     );
   }
 
-  // Only show "Setting up" when user explicitly clicked setup
-  // Don't show it during regular generations (that was confusing)
-  const isRunning = isSettingUp;
+  const isRunning = createRepoMutation.isPending || isProcessingPending;
 
   // Not connected - show setup button with dropdown
   return (
@@ -140,11 +266,34 @@ export function GitHubButton({
         )}
         {variant === 'default' && (
           <>
-            <span>{isRunning ? 'Setting up...' : 'Setup GitHub'}</span>
+            <span>{isRunning ? 'Creating...' : 'Setup GitHub'}</span>
             {!isRunning && <ChevronDown className="w-3 h-3 opacity-60" />}
           </>
         )}
       </motion.button>
+
+      {/* Error message */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            className="absolute right-0 top-full mt-1 z-50 min-w-[200px] bg-red-900/90 border border-red-700 rounded-lg p-3 shadow-xl"
+          >
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-red-200">{error}</div>
+            </div>
+            <button 
+              onClick={() => setError(null)}
+              className="mt-2 text-xs text-red-400 hover:text-red-300"
+            >
+              Dismiss
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Visibility dropdown */}
       <AnimatePresence>
@@ -186,16 +335,22 @@ export function GitHubButton({
 }
 
 /**
- * Get the chat message to trigger GitHub setup
+ * Get the chat message to trigger GitHub code push
+ * This is used AFTER the repo is created via API
  */
-export function getGitHubSetupMessage(visibility: RepoVisibility = 'public'): string {
-  return getSetupMessage(visibility);
+export function getGitHubPushMessage(repoUrl: string, cloneUrl: string): string {
+  return `Push all project code to GitHub using the github-setup skill. The repository has already been created at: ${repoUrl}
+
+Repository URL: ${repoUrl}
+Clone URL: ${cloneUrl}
+
+Initialize git if needed, create an initial commit with all project files, add the remote origin, and push to the repository.`;
 }
 
 /**
- * Get the chat message to trigger GitHub push
+ * Get the chat message to trigger GitHub push for subsequent pushes
  */
-export function getGitHubPushMessage(commitMessage?: string): string {
+export function getGitHubSyncMessage(commitMessage?: string): string {
   const message = commitMessage || 'Update from Hatchway';
   return `Stage all current changes with git add, commit with message "${message}", and push to the remote repository.`;
 }

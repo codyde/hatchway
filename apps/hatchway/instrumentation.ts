@@ -17,6 +17,13 @@ export async function register() {
       const { initializeDatabase } = await import('@hatchway/agent-core');
       await initializeDatabase();
       console.log('[instrumentation] ✅ Database initialized');
+      
+      // In local mode, ensure the local user exists for foreign key constraints
+      if (process.env.HATCHWAY_LOCAL_MODE === 'true') {
+        const { ensureLocalUserExists } = await import('./src/lib/auth-helpers');
+        await ensureLocalUserExists();
+        console.log('[instrumentation] ✅ Local user ensured');
+      }
     } catch (error) {
       console.error('[instrumentation] ❌ Failed to initialize database:', error);
       throw error; // Fail fast - database is required

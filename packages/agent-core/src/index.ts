@@ -24,6 +24,9 @@ export type {
   GitHubPushResult,
   GitHubSyncResult,
   GitHubAuthStatus,
+  GitHubConnection,
+  CreateGitHubRepoRequest,
+  CreateGitHubRepoResponse,
   GitHubChatMessageType
 } from './types/github';
 export { GITHUB_CHAT_MESSAGES } from './types/github';

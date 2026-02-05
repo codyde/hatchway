@@ -25,6 +25,8 @@ export interface Project {
   errorMessage: string | null;
   createdAt: Date;
   updatedAt: Date;
+  // Index signature to allow compatibility with ProjectSummary
+  [key: string]: unknown;
 }
 
 export interface FileNode {

@@ -68,8 +68,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { OnboardingModal, LocalModeOnboarding } from "@/components/onboarding";
 import { LoginModal as LoginModalComponent } from "@/components/auth/LoginModal";
 import { Button } from "@/components/ui/button";
-import { GitHubButton, getGitHubSetupMessage, getGitHubPushMessage, type RepoVisibility } from "@/components/github";
+import { GitHubButton, getGitHubPushMessage, getGitHubSyncMessage, type RepoVisibility } from "@/components/github";
 import { NeonDBButton, getNeonDBSetupMessage } from "@/components/neondb";
+import { DeployToRailwayButton } from "@/components/railway";
 
 import { Monitor, Code, Terminal, MousePointer2, RefreshCw, Copy, Check, Smartphone, Tablet, Cloud, Play, Square, ExternalLink, Loader2, User } from "lucide-react";
 import {
@@ -1169,6 +1170,27 @@ function HomeContent() {
     updateGenerationState,
   ]);
 
+  // Handle GitHub OAuth callback - select the project that initiated the flow
+  useEffect(() => {
+    const githubConnectPending = searchParams?.get('github_connect_pending');
+    const pendingProjectId = searchParams?.get('projectId');
+    
+    if (githubConnectPending === 'true' && pendingProjectId && projects.length > 0) {
+      // Find the project by ID
+      const project = projects.find((p) => p.id === pendingProjectId);
+      if (project && (!currentProject || currentProject.id !== project.id)) {
+        if (DEBUG_PAGE) console.log("🔄 GitHub OAuth callback - selecting project:", project.slug);
+        setCurrentProject(project);
+        setActiveProjectId(project.id);
+        
+        // Update URL to include project slug for consistency
+        const url = new URL(window.location.href);
+        url.searchParams.set('project', project.slug);
+        window.history.replaceState({}, '', url.toString());
+      }
+    }
+  }, [searchParams, projects, currentProject, setActiveProjectId]);
+
   // Sync currentProject with latest data - immediate for important changes, debounced for rapid updates
   const lastSyncKeyRef = useRef<string>("");
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1319,11 +1341,7 @@ function HomeContent() {
           onError: (error) => {
             console.error("Failed to save user message:", error);
             // Notify user - message is in UI but may not persist after refresh
-            addToast({
-              title: "Message may not be saved",
-              description: "Your message is visible but may not persist after refresh.",
-              variant: "warning",
-            });
+            addToast("warning", "Your message is visible but may not persist after refresh.");
             // Continue anyway - message is in local state and build still happens
           },
         }
@@ -1458,7 +1476,7 @@ function HomeContent() {
     
     // Small delay to let the UI settle before starting new generation
     const timer = setTimeout(() => {
-      startGeneration(pending.projectId, getGitHubPushMessage(), {
+      startGeneration(pending.projectId, getGitHubSyncMessage(), {
         addUserMessage: false, // Don't show as user message, it's automatic
       });
     }, 1500);
@@ -2810,23 +2828,24 @@ function HomeContent() {
                   projectId={currentProject.id}
                   projectSlug={currentProject.slug}
                   isGenerating={isGenerating}
-                  onSetupClick={(visibility: RepoVisibility) => {
-                    // Switch to Build tab to show the setup progress
+                  onRepoCreated={(repoUrl: string, cloneUrl: string) => {
+                    // Repo was created via API - now trigger skill to push code
                     switchTab("build");
-                    // Send the GitHub setup message via the chat flow with visibility
-                    startGeneration(currentProject.id, getGitHubSetupMessage(visibility), {
+                    startGeneration(currentProject.id, getGitHubPushMessage(repoUrl, cloneUrl), {
                       addUserMessage: true,
                     });
                   }}
                   onPushClick={() => {
-                    // Switch to Build tab to show the push progress
+                    // Push changes to existing repo
                     switchTab("build");
-                    // Send the GitHub push message via the chat flow
-                    startGeneration(currentProject.id, getGitHubPushMessage(), {
+                    startGeneration(currentProject.id, getGitHubSyncMessage(), {
                       addUserMessage: true,
                     });
                   }}
                   variant="default"
+                />
+                <DeployToRailwayButton
+                  projectId={currentProject.id}
                 />
               </>
             )}
@@ -2898,21 +2917,19 @@ function HomeContent() {
                         <div className="relative hidden lg:block">
                           {/* 3D shadow layer - subtle dark shadow */}
                           <pre 
-                            className="absolute text-[12px] leading-[1.1] font-mono select-none whitespace-pre"
+                            className="absolute top-0 left-0 text-[12px] leading-[1.1] font-mono select-none whitespace-pre"
                             style={{ 
                               color: '#000000',
                               opacity: 0.15,
                               transform: 'translate(2px, 2px)'
                             }}
                             aria-hidden="true"
-                          >{`
- ██████╗ ██████╗ ███████╗███╗   ██╗██████╗ ██╗   ██╗██╗██╗     ██████╗ ███████╗██████╗
-██╔═══██╗██╔══██╗██╔════╝████╗  ██║██╔══██╗██║   ██║██║██║     ██╔══██╗██╔════╝██╔══██╗
-██║   ██║██████╔╝█████╗  ██╔██╗ ██║██████╔╝██║   ██║██║██║     ██║  ██║█████╗  ██████╔╝
-██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║██╔══██╗██║   ██║██║██║     ██║  ██║██╔══╝  ██╔══██╗
-╚██████╔╝██║     ███████╗██║ ╚████║██████╔╝╚██████╔╝██║███████╗██████╔╝███████╗██║  ██║
- ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝╚═════╝  ╚═════╝ ╚═╝╚══════╝╚═════╝ ╚══════╝╚═╝  ╚═╝
-`.trimEnd()}</pre>
+                          >{`██╗  ██╗ █████╗ ████████╗ ██████╗██╗  ██╗██╗    ██╗ █████╗ ██╗   ██╗
+██║  ██║██╔══██╗╚══██╔══╝██╔════╝██║  ██║██║    ██║██╔══██╗╚██╗ ██╔╝
+███████║███████║   ██║   ██║     ███████║██║ █╗ ██║███████║ ╚████╔╝ 
+██╔══██║██╔══██║   ██║   ██║     ██╔══██║██║███╗██║██╔══██║  ╚██╔╝  
+██║  ██║██║  ██║   ██║   ╚██████╗██║  ██║╚███╔███╔╝██║  ██║   ██║   
+╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝    ╚═════╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝   ╚═╝`}</pre>
                           {/* Front layer - muted theme color */}
                           <pre 
                             className="relative text-[12px] leading-[1.1] font-mono select-none whitespace-pre"
@@ -2921,14 +2938,12 @@ function HomeContent() {
                               opacity: 0.7
                             }}
                             aria-label="Hatchway"
-                          >{`
- ██████╗ ██████╗ ███████╗███╗   ██╗██████╗ ██╗   ██╗██╗██╗     ██████╗ ███████╗██████╗
-██╔═══██╗██╔══██╗██╔════╝████╗  ██║██╔══██╗██║   ██║██║██║     ██╔══██╗██╔════╝██╔══██╗
-██║   ██║██████╔╝█████╗  ██╔██╗ ██║██████╔╝██║   ██║██║██║     ██║  ██║█████╗  ██████╔╝
-██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║██╔══██╗██║   ██║██║██║     ██║  ██║██╔══╝  ██╔══██╗
-╚██████╔╝██║     ███████╗██║ ╚████║██████╔╝╚██████╔╝██║███████╗██████╔╝███████╗██║  ██║
- ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝╚═════╝  ╚═════╝ ╚═╝╚══════╝╚═════╝ ╚══════╝╚═╝  ╚═╝
-`.trimEnd()}</pre>
+                          >{`██╗  ██╗ █████╗ ████████╗ ██████╗██╗  ██╗██╗    ██╗ █████╗ ██╗   ██╗
+██║  ██║██╔══██╗╚══██╔══╝██╔════╝██║  ██║██║    ██║██╔══██╗╚██╗ ██╔╝
+███████║███████║   ██║   ██║     ███████║██║ █╗ ██║███████║ ╚████╔╝ 
+██╔══██║██╔══██║   ██║   ██║     ██╔══██║██║███╗██║██╔══██║  ╚██╔╝  
+██║  ██║██║  ██║   ██║   ╚██████╗██║  ██║╚███╔███╔╝██║  ██║   ██║   
+╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝    ╚═════╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝   ╚═╝`}</pre>
                         </div>
                       </div>
                       <form
