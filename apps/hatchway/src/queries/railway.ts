@@ -336,21 +336,12 @@ export function useProvisionRailwayDatabase(projectId: string | undefined) {
 // Database Status Hook
 // ============================================
 
-interface DatabaseConnectionDetails {
-  host: string;
-  port: string;
-  user: string;
-  password: string;
-  database: string;
-  connectionUrl: string;
-}
-
 interface DatabaseStatusResponse {
   hasDatabase: boolean;
   database: {
     serviceId: string;
     status: string;
-    connectionDetails: DatabaseConnectionDetails | null;
+    publicUrl: string | null;
   } | null;
 }
 

@@ -486,47 +486,24 @@ function VariablesTab({ projectId }: { projectId: string }) {
 // Database Tab
 // ============================================
 
-function MaskedField({ label, value }: { label: string; value: string }) {
-  const [copiedField, setCopiedField] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(value);
-    setCopiedField(true);
-    setTimeout(() => setCopiedField(false), 2000);
-  };
-
-  return (
-    <div className="flex items-center justify-between py-2">
-      <div className="flex-1 min-w-0">
-        <p className="text-xs text-gray-500 mb-0.5">{label}</p>
-        <p className="text-sm text-gray-400 font-mono tracking-wider">
-          {'•'.repeat(Math.min(value.length, 24))}
-        </p>
-      </div>
-      <button
-        onClick={handleCopy}
-        className="ml-3 p-1.5 text-gray-500 hover:text-white rounded-md hover:bg-gray-700/50 transition-colors flex-shrink-0"
-        title={`Copy ${label}`}
-      >
-        {copiedField ? (
-          <Check className="w-3.5 h-3.5 text-green-400" />
-        ) : (
-          <Copy className="w-3.5 h-3.5" />
-        )}
-      </button>
-    </div>
-  );
-}
-
 function DatabaseTab({ projectId }: { projectId: string }) {
   const { data: statusData, isLoading: statusLoading } = useProjectRailwayStatus(projectId);
   const { data: dbData, isLoading: dbLoading } = useRailwayDatabaseStatus(projectId);
   const provisionMutation = useProvisionRailwayDatabase(projectId);
+  const [copied, setCopied] = useState(false);
 
   const hasDatabase = !!statusData?.railwayDatabaseServiceId;
   const dbStatus = dbData?.database?.status;
-  const conn = dbData?.database?.connectionDetails;
+  const publicUrl = dbData?.database?.publicUrl;
   const isLoading = statusLoading || dbLoading;
+
+  const handleCopy = async () => {
+    if (publicUrl) {
+      await navigator.clipboard.writeText(publicUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -563,19 +540,32 @@ function DatabaseTab({ projectId }: { projectId: string }) {
               )}
             </div>
 
-            {/* Connection details — masked with copy buttons */}
-            {conn && (
-              <div className="bg-gray-800/50 rounded-lg border border-gray-700/50 divide-y divide-gray-700/50 px-3">
-                <MaskedField label="Host" value={conn.host} />
-                <MaskedField label="Port" value={conn.port} />
-                <MaskedField label="Database" value={conn.database} />
-                <MaskedField label="User" value={conn.user} />
-                <MaskedField label="Password" value={conn.password} />
-                <MaskedField label="Connection URL" value={conn.connectionUrl} />
+            {/* Public connection URL — masked with copy */}
+            {publicUrl && (
+              <div className="bg-gray-800/50 rounded-lg border border-gray-700/50 px-3 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-500 mb-1">Public Connection URL</p>
+                    <p className="text-sm text-gray-400 font-mono tracking-wider truncate">
+                      {'•'.repeat(32)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCopy}
+                    className="ml-3 p-1.5 text-gray-500 hover:text-white rounded-md hover:bg-gray-700/50 transition-colors flex-shrink-0"
+                    title="Copy connection URL"
+                  >
+                    {copied ? (
+                      <Check className="w-3.5 h-3.5 text-green-400" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
               </div>
             )}
 
-            {!conn && dbStatus === 'provisioning' && (
+            {!publicUrl && dbStatus === 'provisioning' && (
               <p className="text-xs text-gray-500 text-center py-4">
                 Connection details will appear once the database is ready.
               </p>
