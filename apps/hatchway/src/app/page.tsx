@@ -69,7 +69,7 @@ import { OnboardingModal, LocalModeOnboarding } from "@/components/onboarding";
 import { LoginModal as LoginModalComponent } from "@/components/auth/LoginModal";
 import { Button } from "@/components/ui/button";
 import { GitHubButton, getGitHubPushMessage, getGitHubSyncMessage, type RepoVisibility } from "@/components/github";
-import { NeonDBButton, getNeonDBSetupMessage } from "@/components/neondb";
+
 import { DeployToRailwayButton } from "@/components/railway";
 
 import { Monitor, Code, Terminal, MousePointer2, RefreshCw, Copy, Check, Smartphone, Tablet, Cloud, Play, Square, ExternalLink, Loader2, User } from "lucide-react";
@@ -2813,17 +2813,6 @@ function HomeContent() {
             {/* Integrations - show when project is selected and completed */}
             {currentProject && currentProject.status === 'completed' && (
               <>
-                <NeonDBButton
-                  projectId={currentProject.id}
-                  isGenerating={isGenerating}
-                  onSetupClick={() => {
-                    switchTab("build");
-                    startGeneration(currentProject.id, getNeonDBSetupMessage(), {
-                      addUserMessage: true,
-                    });
-                  }}
-                  variant="default"
-                />
                 <GitHubButton
                   projectId={currentProject.id}
                   projectSlug={currentProject.slug}
