@@ -292,24 +292,43 @@ export async function DELETE(
     const { project, session } = await requireProjectOwnership(id);
     const userId = session.user.id;
 
-    // Optionally delete the Railway project
+    const railway = createRailwayClient(userId);
+
     if (deleteRailwayProject && project.railwayProjectId) {
+      // Delete all services first (OAuth tokens reliably have service-level permission),
+      // then attempt project deletion as best-effort.
       try {
-        const railway = createRailwayClient(userId);
+        const projectDetails = await railway.getProject(project.railwayProjectId);
+        for (const service of projectDetails.services) {
+          try {
+            await railway.deleteService(service.id);
+          } catch (err) {
+            console.warn(`Failed to delete Railway service ${service.id}:`, err);
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to list Railway project services:', error);
+      }
+      try {
         await railway.deleteProject(project.railwayProjectId);
       } catch (error) {
-        console.warn('Failed to delete Railway project:', error);
-        // Continue anyway - we still want to clear the local reference
+        console.warn('Failed to delete Railway project (OAuth may lack permission):', error);
       }
-    }
-
-    // If not deleting the whole project, try to clean up the database service separately
-    if (!deleteRailwayProject && project.railwayDatabaseServiceId) {
-      try {
-        const railway = createRailwayClient(userId);
-        await railway.deleteService(project.railwayDatabaseServiceId);
-      } catch (error) {
-        console.warn('Failed to delete Railway database service:', error);
+    } else {
+      // Just disconnect — clean up individual services
+      if (project.railwayServiceId) {
+        try {
+          await railway.deleteService(project.railwayServiceId);
+        } catch (error) {
+          console.warn('Failed to delete Railway app service:', error);
+        }
+      }
+      if (project.railwayDatabaseServiceId) {
+        try {
+          await railway.deleteService(project.railwayDatabaseServiceId);
+        } catch (error) {
+          console.warn('Failed to delete Railway database service:', error);
+        }
       }
     }
 

@@ -33,8 +33,22 @@ export async function DELETE(
     const railway = createRailwayClient(userId);
 
     if (deleteProject) {
-      // Delete the entire Railway project
-      await railway.deleteProject(project.railwayProjectId);
+      // Delete all services in the Railway project, then try to delete the project itself.
+      // OAuth tokens may not have permission for projectDelete, so we delete services
+      // individually first and treat the project deletion as best-effort.
+      const projectDetails = await railway.getProject(project.railwayProjectId);
+      for (const service of projectDetails.services) {
+        try {
+          await railway.deleteService(service.id);
+        } catch (err) {
+          console.warn(`Failed to delete Railway service ${service.id}:`, err);
+        }
+      }
+      try {
+        await railway.deleteProject(project.railwayProjectId);
+      } catch (err) {
+        console.warn('Failed to delete Railway project (OAuth may lack permission):', err);
+      }
     } else {
       // Just delete the service
       await railway.deleteService(project.railwayServiceId);
@@ -46,6 +60,7 @@ export async function DELETE(
         railwayProjectId: null,
         railwayServiceId: null,
         railwayEnvironmentId: null,
+        railwayDatabaseServiceId: null,
         railwayDomain: null,
         railwayDeploymentStatus: null,
         railwayLastDeployedAt: null,
