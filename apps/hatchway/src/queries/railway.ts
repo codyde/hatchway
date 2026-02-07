@@ -333,6 +333,49 @@ export function useProvisionRailwayDatabase(projectId: string | undefined) {
 }
 
 // ============================================
+// Database Status Hook
+// ============================================
+
+interface DatabaseConnectionDetails {
+  host: string;
+  port: string;
+  user: string;
+  password: string;
+  database: string;
+  connectionUrl: string;
+}
+
+interface DatabaseStatusResponse {
+  hasDatabase: boolean;
+  database: {
+    serviceId: string;
+    status: string;
+    connectionDetails: DatabaseConnectionDetails | null;
+  } | null;
+}
+
+async function fetchRailwayDatabaseStatus(projectId: string): Promise<DatabaseStatusResponse> {
+  const res = await fetch(`/api/projects/${projectId}/deploy/railway/database`);
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.error || 'Failed to fetch database status');
+  }
+  return res.json();
+}
+
+/**
+ * Hook to fetch Railway database status and connection details
+ */
+export function useRailwayDatabaseStatus(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['projects', projectId, 'railway', 'database'],
+    queryFn: () => fetchRailwayDatabaseStatus(projectId!),
+    enabled: !!projectId,
+    staleTime: 30 * 1000,
+  });
+}
+
+// ============================================
 // Environment Variables Hooks
 // ============================================
 

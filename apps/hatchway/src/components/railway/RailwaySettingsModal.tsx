@@ -34,6 +34,7 @@ import {
   useRedeployRailwayService,
   useProjectRailwayStatus,
   useProvisionRailwayDatabase,
+  useRailwayDatabaseStatus,
 } from '@/queries/railway';
 import { RailwayLogo } from './RailwayLogo';
 
@@ -485,25 +486,47 @@ function VariablesTab({ projectId }: { projectId: string }) {
 // Database Tab
 // ============================================
 
+function MaskedField({ label, value }: { label: string; value: string }) {
+  const [copiedField, setCopiedField] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(value);
+    setCopiedField(true);
+    setTimeout(() => setCopiedField(false), 2000);
+  };
+
+  return (
+    <div className="flex items-center justify-between py-2">
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-gray-500 mb-0.5">{label}</p>
+        <p className="text-sm text-gray-400 font-mono tracking-wider">
+          {'•'.repeat(Math.min(value.length, 24))}
+        </p>
+      </div>
+      <button
+        onClick={handleCopy}
+        className="ml-3 p-1.5 text-gray-500 hover:text-white rounded-md hover:bg-gray-700/50 transition-colors flex-shrink-0"
+        title={`Copy ${label}`}
+      >
+        {copiedField ? (
+          <Check className="w-3.5 h-3.5 text-green-400" />
+        ) : (
+          <Copy className="w-3.5 h-3.5" />
+        )}
+      </button>
+    </div>
+  );
+}
+
 function DatabaseTab({ projectId }: { projectId: string }) {
-  const { data: statusData, isLoading } = useProjectRailwayStatus(projectId);
+  const { data: statusData, isLoading: statusLoading } = useProjectRailwayStatus(projectId);
+  const { data: dbData, isLoading: dbLoading } = useRailwayDatabaseStatus(projectId);
   const provisionMutation = useProvisionRailwayDatabase(projectId);
-  const [copied, setCopied] = useState(false);
 
-  const database = statusData?.database;
   const hasDatabase = !!statusData?.railwayDatabaseServiceId;
-
-  const handleCopyServiceId = async () => {
-    if (statusData?.railwayDatabaseServiceId) {
-      await navigator.clipboard.writeText(statusData.railwayDatabaseServiceId);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  const handleProvision = async () => {
-    await provisionMutation.mutateAsync();
-  };
+  const dbStatus = dbData?.database?.status;
+  const conn = dbData?.database?.connectionDetails;
+  const isLoading = statusLoading || dbLoading;
 
   if (isLoading) {
     return (
@@ -515,119 +538,77 @@ function DatabaseTab({ projectId }: { projectId: string }) {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Database Status */}
       <div>
-        <h3 className="text-sm font-medium text-white mb-2">PostgreSQL Database</h3>
-        <p className="text-sm text-gray-400 mb-4">
-          Provision an SSL-enabled PostgreSQL database powered by Railway&apos;s official Postgres template. The <code className="px-1 py-0.5 bg-gray-800 rounded text-purple-400">DATABASE_URL</code> is automatically wired to your app service.
-        </p>
+        <h3 className="text-sm font-medium text-white mb-4">PostgreSQL Database</h3>
 
         {hasDatabase ? (
           <div className="space-y-4">
-            {/* Status indicator */}
+            {/* Status */}
             <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg border border-gray-700">
               <div className={cn(
                 'w-2.5 h-2.5 rounded-full flex-shrink-0',
-                database?.status === 'ready' ? 'bg-green-400' :
-                database?.status === 'provisioning' ? 'bg-yellow-400 animate-pulse' :
+                dbStatus === 'ready' ? 'bg-green-400' :
+                dbStatus === 'provisioning' ? 'bg-yellow-400 animate-pulse' :
                 'bg-gray-400'
               )} />
-              <div className="flex-1">
-                <p className="text-sm text-white font-medium">
-                  {database?.status === 'ready' ? 'Database Ready' :
-                   database?.status === 'provisioning' ? 'Provisioning...' :
-                   'Status Unknown'}
-                </p>
-                <p className="text-xs text-gray-400">
-                  Railway PostgreSQL (SSL-enabled)
-                </p>
-              </div>
-              {database?.hasConnectionUrl && (
+              <p className="text-sm text-white font-medium flex-1">
+                {dbStatus === 'ready' ? 'Connected' :
+                 dbStatus === 'provisioning' ? 'Provisioning...' :
+                 'Checking...'}
+              </p>
+              {dbStatus === 'ready' && (
                 <span className="px-2 py-0.5 text-xs bg-green-900/30 text-green-400 rounded-full">
-                  Connected
+                  SSL
                 </span>
               )}
             </div>
 
-            {/* Service ID */}
-            <div>
-              <p className="text-xs text-gray-500 mb-1.5">Database Service ID</p>
-              <div className="flex items-center gap-2 p-2 bg-gray-800/50 rounded-md border border-gray-700/50">
-                <code className="flex-1 text-xs text-gray-400 font-mono truncate">
-                  {statusData?.railwayDatabaseServiceId}
-                </code>
-                <button
-                  onClick={handleCopyServiceId}
-                  className="p-1 text-gray-500 hover:text-white rounded transition-colors flex-shrink-0"
-                  title="Copy Service ID"
-                >
-                  {copied ? (
-                    <Check className="w-3.5 h-3.5 text-green-400" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </button>
+            {/* Connection details — masked with copy buttons */}
+            {conn && (
+              <div className="bg-gray-800/50 rounded-lg border border-gray-700/50 divide-y divide-gray-700/50 px-3">
+                <MaskedField label="Host" value={conn.host} />
+                <MaskedField label="Port" value={conn.port} />
+                <MaskedField label="Database" value={conn.database} />
+                <MaskedField label="User" value={conn.user} />
+                <MaskedField label="Password" value={conn.password} />
+                <MaskedField label="Connection URL" value={conn.connectionUrl} />
               </div>
-            </div>
+            )}
 
-            {/* Connection info */}
-            <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
-              <h4 className="text-xs font-medium text-gray-300 mb-2">Connection Details</h4>
-              <p className="text-xs text-gray-400 mb-2">
-                The <code className="px-1 py-0.5 bg-gray-700 rounded text-purple-400">DATABASE_URL</code> environment variable is automatically wired from the Postgres service to your app service using Railway&apos;s variable reference syntax.
+            {!conn && dbStatus === 'provisioning' && (
+              <p className="text-xs text-gray-500 text-center py-4">
+                Connection details will appear once the database is ready.
               </p>
-              <p className="text-xs text-gray-500">
-                Your app receives the full connection string at runtime. View it in the Variables tab under System Variables.
-              </p>
-            </div>
-
-            {/* External access note */}
-            <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
-              <h4 className="text-xs font-medium text-gray-300 mb-2">External Access</h4>
-              <p className="text-xs text-gray-400">
-                TCP proxy is enabled by default for external connections. Find the proxy domain and port in the{' '}
-                <a
-                  href="https://railway.com/dashboard"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-purple-400 hover:text-purple-300"
-                >
-                  Railway Dashboard
-                </a>
-                {' '}under your Postgres service settings.
-              </p>
-            </div>
+            )}
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="p-6 text-center border border-dashed border-gray-700 rounded-lg">
-              <Database className="w-8 h-8 text-gray-600 mx-auto mb-3" />
-              <p className="text-sm text-gray-400 mb-1">No database provisioned</p>
-              <p className="text-xs text-gray-500 mb-4">
-                Add a PostgreSQL database to your Railway project. This will create an SSL-enabled Postgres service with persistent storage and wire the connection string to your app.
-              </p>
-              <button
-                onClick={handleProvision}
-                disabled={provisionMutation.isPending}
-                className={cn(
-                  'inline-flex items-center gap-2 px-4 py-2 text-sm rounded-md transition-colors',
-                  'bg-purple-600 hover:bg-purple-500 text-white',
-                  provisionMutation.isPending && 'opacity-50 cursor-not-allowed'
-                )}
-              >
-                {provisionMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Database className="w-4 h-4" />
-                )}
-                {provisionMutation.isPending ? 'Provisioning...' : 'Add PostgreSQL Database'}
-              </button>
-              {provisionMutation.isError && (
-                <p className="mt-3 text-xs text-red-400">
-                  {provisionMutation.error instanceof Error ? provisionMutation.error.message : 'Failed to provision database'}
-                </p>
+          <div className="p-6 text-center border border-dashed border-gray-700 rounded-lg">
+            <Database className="w-8 h-8 text-gray-600 mx-auto mb-3" />
+            <p className="text-sm text-gray-400 mb-1">No database provisioned</p>
+            <p className="text-xs text-gray-500 mb-4">
+              Add an SSL-enabled PostgreSQL database with persistent storage. The connection string is automatically wired to your app.
+            </p>
+            <button
+              onClick={() => provisionMutation.mutateAsync()}
+              disabled={provisionMutation.isPending}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 text-sm rounded-md transition-colors',
+                'bg-purple-600 hover:bg-purple-500 text-white',
+                provisionMutation.isPending && 'opacity-50 cursor-not-allowed'
               )}
-            </div>
+            >
+              {provisionMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Database className="w-4 h-4" />
+              )}
+              {provisionMutation.isPending ? 'Provisioning...' : 'Add PostgreSQL Database'}
+            </button>
+            {provisionMutation.isError && (
+              <p className="mt-3 text-xs text-red-400">
+                {provisionMutation.error instanceof Error ? provisionMutation.error.message : 'Failed to provision database'}
+              </p>
+            )}
           </div>
         )}
       </div>

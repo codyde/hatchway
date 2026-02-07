@@ -144,11 +144,17 @@ export async function GET(
       });
     }
 
-    // Fetch database service variables to check if it's ready
-    // Note: The Postgres service exposes PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE
-    // as its own variables — not DATABASE_URL (that's a reference var on the app service).
+    // Fetch database service variables to check status and get connection details
+    // The Postgres service exposes PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE
     let status = 'unknown';
-    let hasConnectionUrl = false;
+    let connectionDetails: {
+      host: string;
+      port: string;
+      user: string;
+      password: string;
+      database: string;
+      connectionUrl: string;
+    } | null = null;
 
     if (project.railwayProjectId && project.railwayEnvironmentId) {
       try {
@@ -158,9 +164,25 @@ export async function GET(
           project.railwayEnvironmentId,
           project.railwayDatabaseServiceId,
         );
-        // PGHOST is set once the Postgres service is running
-        hasConnectionUrl = !!dbVars.PGHOST;
-        status = hasConnectionUrl ? 'ready' : 'provisioning';
+
+        if (dbVars.PGHOST) {
+          status = 'ready';
+          const host = dbVars.PGHOST || '';
+          const port = dbVars.PGPORT || '5432';
+          const user = dbVars.PGUSER || dbVars.POSTGRES_USER || 'postgres';
+          const password = dbVars.PGPASSWORD || dbVars.POSTGRES_PASSWORD || '';
+          const database = dbVars.PGDATABASE || dbVars.POSTGRES_DB || 'railway';
+          connectionDetails = {
+            host,
+            port,
+            user,
+            password,
+            database,
+            connectionUrl: dbVars.DATABASE_URL || `postgresql://${user}:${password}@${host}:${port}/${database}`,
+          };
+        } else {
+          status = 'provisioning';
+        }
       } catch {
         status = 'unknown';
       }
@@ -171,7 +193,7 @@ export async function GET(
       database: {
         serviceId: project.railwayDatabaseServiceId,
         status,
-        hasConnectionUrl,
+        connectionDetails,
       },
     });
   } catch (error) {
