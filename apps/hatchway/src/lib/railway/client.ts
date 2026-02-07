@@ -744,6 +744,11 @@ export class RailwayClient {
 
   /**
    * Get a template's config by its short code (e.g., "postgres")
+   * 
+   * Note: This uses an unauthenticated request because the template query
+   * is public data but returns "Not Authorized" with OAuth tokens.
+   * Railway's template endpoint works without authentication since
+   * templates are publicly listed in the marketplace.
    */
   async getTemplate(code: string): Promise<RailwayTemplate> {
     const query = `
@@ -755,8 +760,36 @@ export class RailwayClient {
       }
     `;
 
-    const data = await this.graphql<{ template: RailwayTemplate }>(query, { code });
-    return data.template;
+    // Make an unauthenticated request — the template query doesn't
+    // work with OAuth tokens but doesn't require auth at all
+    const response = await fetch(RAILWAY_GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query, variables: { code } }),
+    });
+
+    const result = await response.json() as {
+      data?: { template: RailwayTemplate };
+      errors?: Array<{ message: string }>;
+    };
+
+    if (!response.ok || (result.errors && result.errors.length > 0)) {
+      const errorMessage = result.errors?.[0]?.message || `HTTP ${response.status}`;
+      console.error('[Railway API] Template query error:', {
+        status: response.status,
+        errors: result.errors,
+        code,
+      });
+      throw new Error(`Railway API error: ${errorMessage}`);
+    }
+
+    if (!result.data?.template) {
+      throw new Error(`Railway template not found: ${code}`);
+    }
+
+    return result.data.template;
   }
 
   /**
