@@ -145,6 +145,8 @@ export async function GET(
     }
 
     // Fetch database service variables to check if it's ready
+    // Note: The Postgres service exposes PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE
+    // as its own variables — not DATABASE_URL (that's a reference var on the app service).
     let status = 'unknown';
     let hasConnectionUrl = false;
 
@@ -156,7 +158,8 @@ export async function GET(
           project.railwayEnvironmentId,
           project.railwayDatabaseServiceId,
         );
-        hasConnectionUrl = !!dbVars.DATABASE_URL;
+        // PGHOST is set once the Postgres service is running
+        hasConnectionUrl = !!dbVars.PGHOST;
         status = hasConnectionUrl ? 'ready' : 'provisioning';
       } catch {
         status = 'unknown';

@@ -200,11 +200,13 @@ export async function GET(
       });
     }
 
+    // Create Railway client for API calls in this handler
+    const railway = createRailwayClient(userId);
+
     // Get latest deployment info from Railway
     let latestDeployment: RailwayDeploymentInfo | null = null;
     if (project.railwayServiceId && project.railwayEnvironmentId) {
       try {
-        const railway = createRailwayClient(userId);
         const deployments = await railway.getDeployments(
           project.railwayProjectId,
           project.railwayServiceId,
@@ -242,9 +244,28 @@ export async function GET(
       status: project.railwayDeploymentStatus,
       lastDeployedAt: project.railwayLastDeployedAt,
       latestDeployment,
-      database: project.railwayDatabaseServiceId ? {
-        serviceId: project.railwayDatabaseServiceId,
-      } : null,
+      database: project.railwayDatabaseServiceId ? await (async () => {
+        // Check if the Postgres service is ready by looking for PGHOST
+        try {
+          const dbVars = await railway.getVariables(
+            project.railwayProjectId!,
+            project.railwayEnvironmentId!,
+            project.railwayDatabaseServiceId!,
+          );
+          const ready = !!dbVars.PGHOST;
+          return {
+            serviceId: project.railwayDatabaseServiceId,
+            status: ready ? 'ready' : 'provisioning',
+            hasConnectionUrl: ready,
+          };
+        } catch {
+          return {
+            serviceId: project.railwayDatabaseServiceId,
+            status: 'unknown',
+            hasConnectionUrl: false,
+          };
+        }
+      })() : null,
     });
   } catch (error) {
     const authResponse = handleAuthError(error);
