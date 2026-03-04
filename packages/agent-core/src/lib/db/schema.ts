@@ -169,7 +169,9 @@ export const messages = pgTable('messages', {
   role: text('role').notNull(),
   content: text('content').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+}, (table) => ({
+  projectIdIdx: index('messages_project_id_idx').on(table.projectId),
+}));
 
 export const portAllocations = pgTable('port_allocations', {
   port: integer('port').primaryKey(),
