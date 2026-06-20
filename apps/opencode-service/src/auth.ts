@@ -8,6 +8,7 @@
 import { createHash } from 'crypto';
 import { db } from '@hatchway/agent-core';
 import { runnerKeys } from '@hatchway/agent-core/lib/db/schema';
+import { timingSafeEqualString } from '@hatchway/agent-core/lib/timing-safe-equal';
 import { eq, and, isNull } from 'drizzle-orm';
 
 /**
@@ -172,7 +173,7 @@ export async function authenticateRequest(
   const token = extractToken(headers);
   const sharedSecret = process.env.RUNNER_SHARED_SECRET;
 
-  if (sharedSecret && token === sharedSecret) {
+  if (sharedSecret && token && timingSafeEqualString(token, sharedSecret)) {
     return {
       authenticated: true,
     };

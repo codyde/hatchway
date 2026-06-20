@@ -631,12 +631,21 @@ export function useBuildWebSocket({
       
       ws.onmessage = handleMessage;
       
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         if (!isMountedRef.current) return;
-        
-        if (DEBUG) console.log('[useBuildWebSocket] WebSocket closed');
+
+        if (DEBUG) console.log('[useBuildWebSocket] WebSocket closed', event.code);
         setIsConnected(false);
-        
+
+        // Auth failures (server closes with 4403 Forbidden, or rejects the
+        // upgrade with 401) are not transient - reconnecting can never succeed,
+        // so stop and surface an actionable error instead of looping.
+        if (event.code === 4403) {
+          setIsReconnecting(false);
+          setError(new Error('Not authorized for this project. Try signing in again.'));
+          return;
+        }
+
         // Attempt to reconnect if still enabled
         if (enabled && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
           setIsReconnecting(true);

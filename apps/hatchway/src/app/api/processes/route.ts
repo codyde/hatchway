@@ -3,10 +3,13 @@ import { db } from '@hatchway/agent-core/lib/db/client';
 import { projects } from '@hatchway/agent-core/lib/db/schema';
 import { or, eq } from 'drizzle-orm';
 import { getAllProcesses } from '@hatchway/agent-core/lib/process-manager';
+import { requireOperationalAccess, handleAuthError } from '@/lib/auth-helpers';
 
 // GET /api/processes - List all running dev servers
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    await requireOperationalAccess(request);
+
     // Get processes from database (source of truth)
     const runningProjects = await db.select()
       .from(projects)
@@ -38,6 +41,9 @@ export async function GET() {
 
     return NextResponse.json({ processes: processData });
   } catch (error) {
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+
     console.error('Error fetching processes:', error);
     return NextResponse.json(
       {

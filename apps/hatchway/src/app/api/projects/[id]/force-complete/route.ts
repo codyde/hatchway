@@ -15,6 +15,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@hatchway/agent-core/lib/db/client';
 import { generationSessions, projects } from '@hatchway/agent-core/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { requireProjectOwnership, handleAuthError } from '@/lib/auth-helpers';
 
 export async function POST(
   request: Request,
@@ -26,6 +27,9 @@ export async function POST(
     if (!projectId) {
       return NextResponse.json({ error: 'Project ID is required' }, { status: 400 });
     }
+
+    // Verify user owns this project
+    await requireProjectOwnership(projectId);
 
     const now = new Date();
     const changes: string[] = [];
@@ -108,6 +112,9 @@ export async function POST(
       sessionIds: activeSessions.map(s => s.id),
     });
   } catch (error) {
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+
     console.error('[force-complete] Error:', error);
     return NextResponse.json(
       { error: 'Failed to force-complete/reset project' },

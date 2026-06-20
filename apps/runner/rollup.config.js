@@ -43,7 +43,6 @@ const external = [
   'util',
   
   // NPM dependencies
-  '@sentry/node',
   '@anthropic-ai/claude-agent-sdk',
   '@clack/prompts',
   '@openai/codex-sdk',
@@ -110,20 +109,12 @@ const commonPlugins = [
   json(),
 ];
 
-// Banner to inject CJS compatibility shim for OpenTelemetry/Sentry instrumentation
-// The Sentry SDK uses require-in-the-middle which needs `require` and `require.cache`
-const cjsShimBanner = `// Hatchway CLI - Built with Rollup
-import { createRequire as __createRequire } from 'node:module';
-const require = __createRequire(import.meta.url);
-`;
-
 const defaultBanner = '// Hatchway CLI - Built with Rollup';
 
 export default {
   input: {
     'index': 'src/index.ts',
     'cli/index': 'src/cli/index.ts',
-    'instrument': 'src/instrument.ts',
   },
   output: {
     dir: 'dist',
@@ -131,21 +122,11 @@ export default {
     sourcemap: true,
     entryFileNames: '[name].js',
     chunkFileNames: 'chunks/[name]-[hash].js',
-    // Use CJS shim for instrument.js (Sentry SDK), default banner for others
-    banner: (chunk) => chunk.name === 'instrument' ? cjsShimBanner : defaultBanner,
+    banner: defaultBanner,
   },
   external: isExternal,
   plugins: commonPlugins,
-  // Suppress known harmless warnings
   onwarn(warning, warn) {
-    // Ignore "this is undefined" warnings from @opentelemetry
-    // These are caused by TypeScript-generated helpers in their ESM build
-    // that use `this` at module scope, which is undefined in ES modules.
-    // The code still works correctly - it just falls back to inline helpers.
-    if (warning.code === 'THIS_IS_UNDEFINED' && 
-        warning.id?.includes('@opentelemetry')) {
-      return;
-    }
     warn(warning);
   },
 };

@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { db } from '@hatchway/agent-core/lib/db/client';
 import { projects, railwayDeployments } from '@hatchway/agent-core/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac } from 'crypto';
+import { timingSafeEqualString } from '@hatchway/agent-core/lib/timing-safe-equal';
 import type { RailwayWebhookPayload, RailwayDeploymentStatus } from '@/lib/railway/types';
 
 /**
@@ -24,16 +25,8 @@ function verifyWebhookSignature(
       .update(payload)
       .digest('hex');
 
-    // Use timing-safe comparison to prevent timing attacks
-    // Both signatures need to be the same length for timingSafeEqual
-    const signatureBuffer = Buffer.from(signature, 'hex');
-    const expectedBuffer = Buffer.from(expectedSignature, 'hex');
-
-    if (signatureBuffer.length !== expectedBuffer.length) {
-      return false;
-    }
-
-    return timingSafeEqual(signatureBuffer, expectedBuffer);
+    // Timing-safe comparison of the hex digests to prevent timing attacks
+    return timingSafeEqualString(signature, expectedSignature);
   } catch (error) {
     console.error('[Railway Webhook] Signature verification error:', error);
     return false;

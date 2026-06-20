@@ -17,13 +17,12 @@
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
-import type { Server } from 'http';
+import type { Server, IncomingMessage } from 'http';
 import type { GenerationState } from '../../types/generation';
 import type { RunnerCommand, RunnerEvent, RunnerMessage } from '../../shared/runner/messages';
 import { isRunnerEvent } from '../../shared/runner/messages';
 import { publishRunnerEvent } from '../runner/event-stream';
 // NOTE: processGlobalRunnerEvent removed - DB writes now happen via HTTP from runner
-import * as Sentry from '@sentry/node';
 import { buildLogger } from '../logging/build-logger';
 import { db } from '../db/client';
 import { runnerKeys, generationSessions, generationTodos, generationToolCalls, runningProcesses, projects } from '../db/schema';
@@ -32,14 +31,33 @@ import { createHash } from 'node:crypto';
 import { httpProxyManager } from './http-proxy-manager';
 import { hmrProxyManager } from './hmr-proxy-manager';
 import { commandQueue } from '../runner/command-queue';
+import { timingSafeEqualString } from '../timing-safe-equal';
 
 interface ClientSubscription {
   ws: WebSocket;
   projectId: string;
   sessionId?: string;
+  userId?: string; // Authenticated user (undefined only in local mode)
   lastHeartbeat: number;
   hmrConnections?: Set<string>; // Track HMR connections owned by this client
 }
+
+/**
+ * Authenticates a frontend client's upgrade request (e.g. via session cookies).
+ * Returns the authenticated user, or null to reject the connection.
+ */
+export type ClientAuthenticator = (req: IncomingMessage) => Promise<{ userId: string } | null>;
+
+/**
+ * Authorizes a user's access to a project (ownership check).
+ */
+export type ProjectAccessAuthorizer = (userId: string, projectId: string) => Promise<boolean>;
+
+const isLocalMode = () => process.env.HATCHWAY_LOCAL_MODE === 'true';
+
+// Carries the authenticated user from the upgrade handler to handleConnection
+// without mutating the Node request object. GC-safe (keyed by request).
+const upgradeAuthContext = new WeakMap<IncomingMessage, { userId?: string }>();
 
 interface RunnerConnection {
   id: string;
@@ -140,6 +158,20 @@ class BuildWebSocketServer {
   // Callback for runner status changes (set by app layer)
   private onRunnerStatusChangeCallback: ((runnerId: string, connected: boolean, affectedProjectIds: string[]) => void) | null = null;
 
+  // Client auth hooks (set by app layer). Without these, client connections are
+  // only accepted in local mode - default deny in hosted deployments.
+  private authenticateClient: ClientAuthenticator | null = null;
+  private authorizeProjectAccess: ProjectAccessAuthorizer | null = null;
+
+  /**
+   * Install authentication hooks for frontend client connections.
+   * Must be called by the app layer before clients connect in hosted mode.
+   */
+  setClientAuth(authenticate: ClientAuthenticator, authorize: ProjectAccessAuthorizer) {
+    this.authenticateClient = authenticate;
+    this.authorizeProjectAccess = authorize;
+  }
+
   constructor() {
     buildLogger.websocket.serverCreated(this.instanceId);
   }
@@ -164,7 +196,14 @@ class BuildWebSocketServer {
     });
 
     this.wss.on('connection', (ws: WebSocket, req) => {
-      this.handleConnection(ws, req);
+      this.handleConnection(ws, req).catch(error => {
+        buildLogger.websocket.error('Failed to handle client connection', error);
+        try {
+          ws.close(1011, 'Internal error');
+        } catch {
+          // Socket may already be closed
+        }
+      });
     });
 
     // Runner WebSocket server on /ws/runner - noServer mode for manual upgrade handling
@@ -187,10 +226,25 @@ class BuildWebSocketServer {
           this.runnerWss!.emit('connection', ws, request);
         });
       } else if (pathname === path || pathname === '/ws') {
-        // Frontend client connection - handle with wss
-        this.wss!.handleUpgrade(request, socket, head, (ws) => {
-          this.wss!.emit('connection', ws, request);
-        });
+        // Frontend client connection - authenticate BEFORE completing the handshake.
+        // Upgrade requests bypass Next.js middleware, so this is the only auth gate.
+        this.resolveClientAuth(request)
+          .then(auth => {
+            if (!auth.allowed) {
+              buildLogger.log('warn', 'websocket', 'Rejected unauthenticated client upgrade');
+              socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+              socket.destroy();
+              return;
+            }
+            upgradeAuthContext.set(request, { userId: auth.userId });
+            this.wss!.handleUpgrade(request, socket, head, (ws) => {
+              this.wss!.emit('connection', ws, request);
+            });
+          })
+          .catch(error => {
+            buildLogger.websocket.error('Client upgrade auth failed', error);
+            socket.destroy();
+          });
       } else {
         // Unknown path - destroy the socket
         // Only log non-root paths as warnings (root path is often probed by browsers/tools)
@@ -229,13 +283,58 @@ class BuildWebSocketServer {
   // ============================================================
 
   /**
+   * Authenticate a client upgrade request.
+   * Local mode: always allowed. Hosted mode: requires the app layer to have
+   * installed an authenticator via setClientAuth() - otherwise deny.
+   */
+  private async resolveClientAuth(req: IncomingMessage): Promise<{ allowed: boolean; userId?: string }> {
+    if (isLocalMode()) {
+      return { allowed: true };
+    }
+
+    if (!this.authenticateClient) {
+      buildLogger.log('warn', 'websocket', 'No client authenticator configured - denying client connection');
+      return { allowed: false };
+    }
+
+    const auth = await this.authenticateClient(req);
+    if (!auth) {
+      return { allowed: false };
+    }
+
+    return { allowed: true, userId: auth.userId };
+  }
+
+  /**
+   * Check whether a user may access a project. Local mode always allows.
+   */
+  private async canAccessProject(userId: string | undefined, projectId: string): Promise<boolean> {
+    if (isLocalMode()) return true;
+    if (!this.authorizeProjectAccess || !userId) return false;
+    try {
+      return await this.authorizeProjectAccess(userId, projectId);
+    } catch (error) {
+      buildLogger.websocket.error('Project access check failed', error, { projectId });
+      return false;
+    }
+  }
+
+  /**
    * Handle new frontend WebSocket connection
    */
-  private handleConnection(ws: WebSocket, req: any) {
+  private async handleConnection(ws: WebSocket, req: any) {
     const clientId = this.generateClientId();
     const url = new URL(req.url || '', `http://${req.headers.host}`);
     const projectId = url.searchParams.get('projectId') || '';
     const sessionId = url.searchParams.get('sessionId') || undefined;
+    const userId = upgradeAuthContext.get(req as IncomingMessage)?.userId;
+
+    // Verify the authenticated user owns the project they're subscribing to
+    if (projectId && !(await this.canAccessProject(userId, projectId))) {
+      buildLogger.log('warn', 'websocket', `Client denied access to project ${projectId}`);
+      ws.close(4403, 'Forbidden');
+      return;
+    }
 
     buildLogger.websocket.clientConnected(clientId, projectId, sessionId);
 
@@ -244,6 +343,7 @@ class BuildWebSocketServer {
       ws,
       projectId,
       sessionId,
+      userId,
       lastHeartbeat: Date.now(),
     });
 
@@ -260,7 +360,9 @@ class BuildWebSocketServer {
     ws.on('message', (data: Buffer) => {
       try {
         const message = JSON.parse(data.toString());
-        this.handleClientMessage(clientId, message);
+        this.handleClientMessage(clientId, message).catch(error => {
+          buildLogger.websocket.error('Failed to handle client message', error, { clientId });
+        });
       } catch (error) {
         buildLogger.websocket.error('Failed to parse client message', error, { clientId });
       }
@@ -316,7 +418,7 @@ class BuildWebSocketServer {
         const result = await validateRunnerKey(token);
         isAuthenticated = result.valid;
         runnerUserId = result.userId;
-      } else if (sharedSecret && token === sharedSecret) {
+      } else if (sharedSecret && timingSafeEqualString(token, sharedSecret)) {
         // Shared secret authentication (legacy) - no userId available
         isAuthenticated = true;
       }
@@ -338,6 +440,24 @@ class BuildWebSocketServer {
     const url = new URL(req.url || '', `http://${req.headers.host}`);
     const runnerId = url.searchParams.get('runnerId') ?? 'default';
 
+    // Guard against runner ID collisions/hijacking:
+    // - A runner ID already claimed by a different user's key cannot be taken over.
+    // - A reconnect by the same owner cleanly replaces the old connection.
+    const existing = this.runnerConnections.get(runnerId);
+    if (existing) {
+      if (existing.userId !== runnerUserId) {
+        buildLogger.log('warn', 'websocket', `Rejected runner connection: runnerId '${runnerId}' already claimed by another user`);
+        ws.close(1008, 'Runner ID already in use');
+        return;
+      }
+      clearInterval(existing.pingInterval);
+      try {
+        existing.socket.close(1000, 'Replaced by new connection');
+      } catch {
+        // Old socket may already be dead
+      }
+    }
+
     buildLogger.websocket.runnerConnected(runnerId);
 
     // Setup ping/pong keepalive
@@ -354,13 +474,6 @@ class BuildWebSocketServer {
       lastHeartbeat: Date.now(),
       pingInterval,
       userId: runnerUserId,
-    });
-
-    // Sentry breadcrumb for connection
-    Sentry.addBreadcrumb({
-      category: 'websocket',
-      message: `Runner connected: ${runnerId}`,
-      level: 'info',
     });
 
     // Process any queued commands for this runner
@@ -403,18 +516,18 @@ class BuildWebSocketServer {
         }
       } catch (error) {
         this.runnerTotalErrors++;
-        Sentry.captureException(error, {
-          tags: { runnerId, source: 'websocket_message' },
-          level: 'error',
-        });
         buildLogger.websocket.error('Failed to handle runner message', error, { runnerId });
       }
     });
 
     // Handle runner disconnect
     ws.on('close', (code) => {
-      buildLogger.websocket.runnerDisconnected(runnerId, code);
       const conn = this.runnerConnections.get(runnerId);
+      // A newer connection may have replaced this one - don't tear down its entry
+      if (conn && conn.socket !== ws) {
+        return;
+      }
+      buildLogger.websocket.runnerDisconnected(runnerId, code);
       if (conn) {
         clearInterval(conn.pingInterval);
       }
@@ -428,24 +541,12 @@ class BuildWebSocketServer {
       
       // Clean up running processes for this runner and update project statuses
       this.cleanupRunnerProcesses(runnerId);
-
-      Sentry.addBreadcrumb({
-        category: 'websocket',
-        message: `Runner disconnected: ${runnerId}`,
-        level: 'info',
-        data: { code },
-      });
     });
 
     // Handle runner errors
     ws.on('error', (error) => {
       buildLogger.websocket.error('Runner socket error', error, { runnerId });
       this.runnerTotalErrors++;
-
-      Sentry.captureException(error, {
-        tags: { runnerId, source: 'websocket_error' },
-        level: 'error',
-      });
 
       const conn = this.runnerConnections.get(runnerId);
       if (conn) {
@@ -507,34 +608,13 @@ class BuildWebSocketServer {
     }
 
     try {
-      // Attach Sentry trace context only if there's an active span
-      // This ensures we don't propagate stale/ambient trace context
-      const activeSpan = Sentry.getActiveSpan();
-      const hasTrace = !!activeSpan;
-      if (activeSpan) {
-        const traceData = Sentry.getTraceData();
-        if (traceData['sentry-trace']) {
-          command._sentry = {
-            trace: traceData['sentry-trace'],
-            baggage: traceData.baggage,
-          };
-          buildLogger.log('debug', 'websocket', `Attaching trace to command ${command.type}`, {
-            tracePreview: traceData['sentry-trace'].substring(0, 50)
-          });
-        }
-      }
-      
-      buildLogger.websocket.commandSent(runnerId, command.type, hasTrace);
+      buildLogger.websocket.commandSent(runnerId, command.type, false);
 
       connection.socket.send(JSON.stringify(command));
       this.runnerTotalCommands++;
       return true;
     } catch (error) {
       this.runnerTotalErrors++;
-      Sentry.captureException(error, {
-        tags: { runnerId, commandType: command.type },
-        level: 'error',
-      });
       buildLogger.websocket.error('Failed to send command to runner', error, { runnerId, commandType: command.type });
       return false;
     }
@@ -609,13 +689,6 @@ class BuildWebSocketServer {
       if (now - conn.lastHeartbeat > this.RUNNER_HEARTBEAT_TIMEOUT) {
         buildLogger.websocket.runnerStaleRemoved(runnerId);
 
-        Sentry.addBreadcrumb({
-          category: 'websocket',
-          message: `Stale runner connection removed: ${runnerId}`,
-          level: 'warning',
-          data: { age: now - conn.lastHeartbeat },
-        });
-
         clearInterval(conn.pingInterval);
         conn.socket.close(1000, 'Heartbeat timeout');
         this.runnerConnections.delete(runnerId);
@@ -671,15 +744,8 @@ class BuildWebSocketServer {
       }
 
       buildLogger.log('info', 'websocket', `Cleaned up ${projectIds.length} processes for disconnected runner: ${runnerId}`, { 
-        runnerId, 
-        projectIds 
-      });
-
-      Sentry.addBreadcrumb({
-        category: 'websocket',
-        message: `Cleaned up processes for disconnected runner`,
-        level: 'info',
-        data: { runnerId, processCount: projectIds.length },
+        runnerId,
+        projectIds
       });
 
       // Notify app layer about runner disconnection so it can emit project events
@@ -692,10 +758,6 @@ class BuildWebSocketServer {
       }
     } catch (error) {
       buildLogger.websocket.error('Failed to cleanup runner processes', error, { runnerId });
-      Sentry.captureException(error, {
-        tags: { runnerId, source: 'runner_cleanup' },
-        level: 'error',
-      });
     }
   }
 
@@ -728,7 +790,7 @@ class BuildWebSocketServer {
   /**
    * Handle messages from client (heartbeat, resubscribe, HMR, etc.)
    */
-  private handleClientMessage(clientId: string, message: any) {
+  private async handleClientMessage(clientId: string, message: any) {
     const client = this.clients.get(clientId);
     if (!client) return;
 
@@ -737,13 +799,23 @@ class BuildWebSocketServer {
         client.lastHeartbeat = Date.now();
         this.sendMessage(client.ws, { type: 'heartbeat-ack', timestamp: Date.now() });
         break;
-      
-      case 'subscribe':
-        // Update subscription
-        client.projectId = message.projectId;
+
+      case 'subscribe': {
+        // Re-verify ownership before switching subscription to another project.
+        // Skip the DB check when re-subscribing to the project already verified
+        // at connection time (the common connect-then-subscribe path).
+        const targetProjectId = typeof message.projectId === 'string' ? message.projectId : '';
+        const alreadyVerified = targetProjectId === client.projectId;
+        if (targetProjectId && !alreadyVerified && !(await this.canAccessProject(client.userId, targetProjectId))) {
+          buildLogger.log('warn', 'websocket', `Client ${clientId} denied subscribe to project ${targetProjectId}`);
+          this.sendMessage(client.ws, { type: 'error', error: 'Forbidden', projectId: targetProjectId });
+          break;
+        }
+        client.projectId = targetProjectId;
         client.sessionId = message.sessionId;
-        buildLogger.websocket.clientSubscribed(clientId, message.projectId);
+        buildLogger.websocket.clientSubscribed(clientId, targetProjectId);
         break;
+      }
       
       case 'get-state':
         // Client requesting current state (on reconnect)
@@ -768,12 +840,23 @@ class BuildWebSocketServer {
   /**
    * Handle HMR connect request from frontend
    */
-  private handleHmrConnect(clientId: string, client: ClientSubscription, message: any) {
-    const { connectionId, port, protocol, runnerId } = message;
-    
-    // Use project's runnerId if not specified
-    const targetRunnerId = runnerId || this.getRunnerIdForProject(client.projectId);
-    if (!targetRunnerId) {
+  private async handleHmrConnect(clientId: string, client: ClientSubscription, message: any) {
+    const { connectionId, protocol } = message;
+
+    // Derive runner and port from the project record - never trust
+    // client-supplied values, which would allow tunneling to arbitrary
+    // runners/ports.
+    if (!client.projectId) {
+      this.sendMessage(client.ws, {
+        type: 'hmr-error',
+        connectionId,
+        error: 'Not subscribed to a project',
+      });
+      return;
+    }
+
+    const target = await this.getHmrTargetForProject(client.projectId);
+    if (!target) {
       this.sendMessage(client.ws, {
         type: 'hmr-error',
         connectionId,
@@ -781,8 +864,7 @@ class BuildWebSocketServer {
       });
       return;
     }
-
-
+    const { runnerId: targetRunnerId, port } = target;
 
     // Track this connection on the client
     if (!client.hmrConnections) {
@@ -851,14 +933,28 @@ class BuildWebSocketServer {
   }
 
   /**
-   * Get the runner ID for a project (looks up from connected runners)
-   * In a multi-runner setup, this would query the database
+   * Resolve the HMR tunnel target (runner + dev server port) for a project.
+   * The project's assigned runner must be connected and its dev server port
+   * recorded - no fallback to "any runner".
    */
-  private getRunnerIdForProject(projectId: string): string | null {
-    // For now, return the first connected runner
-    // TODO: Implement proper project->runner mapping via database lookup
-    const runners = this.listRunnerConnections();
-    return runners.length > 0 ? runners[0].runnerId : null;
+  private async getHmrTargetForProject(projectId: string): Promise<{ runnerId: string; port: number } | null> {
+    try {
+      const rows = await db
+        .select({ runnerId: projects.runnerId, devServerPort: projects.devServerPort })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+
+      if (rows.length === 0) return null;
+      const { runnerId, devServerPort } = rows[0];
+      if (!runnerId || !devServerPort) return null;
+      if (!this.runnerConnections.has(runnerId)) return null;
+
+      return { runnerId, port: devServerPort };
+    } catch (error) {
+      buildLogger.websocket.error('Failed to resolve HMR target', error, { projectId });
+      return null;
+    }
   }
 
   /**
@@ -882,12 +978,7 @@ class BuildWebSocketServer {
       });
     }
 
-    // OPTIONAL: Capture current trace context if available
-    const activeSpan = Sentry.getActiveSpan();
-    const traceContext = activeSpan ? {
-      trace: Sentry.getTraceData()['sentry-trace'],
-      baggage: Sentry.getTraceData().baggage,
-    } : undefined;
+    const traceContext = undefined;
 
     const batch = this.pendingUpdates.get(key)!;
     batch.updates.push({
@@ -936,12 +1027,7 @@ class BuildWebSocketServer {
       });
     }
 
-    // OPTIONAL: Capture current trace context if available
-    const activeSpan = Sentry.getActiveSpan();
-    const traceContext = activeSpan ? {
-      trace: Sentry.getTraceData()['sentry-trace'],
-      baggage: Sentry.getTraceData().baggage,
-    } : undefined;
+    const traceContext = undefined;
 
     const batch = this.pendingUpdates.get(key)!;
     batch.updates.push({

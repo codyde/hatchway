@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import { reconcileProjectsWithFilesystem } from '@hatchway/agent-core/lib/reconciliation';
+import { requireOperationalAccess, handleAuthError } from '@/lib/auth-helpers';
 
 // GET /api/reconcile - Check DB vs filesystem sync status
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    await requireOperationalAccess(request);
+
     console.log('🔄 Running reconciliation check...');
     const result = await reconcileProjectsWithFilesystem();
 
@@ -14,6 +17,9 @@ export async function GET() {
 
     return NextResponse.json(result);
   } catch (error) {
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+
     console.error('Error during reconciliation:', error);
     return NextResponse.json(
       {

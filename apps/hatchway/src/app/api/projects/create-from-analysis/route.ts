@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import * as Sentry from '@sentry/nextjs';
 import { db } from '@hatchway/agent-core/lib/db/client';
 import { projects, messages } from '@hatchway/agent-core/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -98,23 +97,6 @@ export async function POST(request: Request) {
       : uaLower.includes('safari/') && !uaLower.includes('chrome/') ? 'safari'
       : 'other';
 
-    Sentry.logger.info('Project created from analysis', {
-      projectId: project.id,
-      projectSlug: finalSlug,
-      projectName: friendlyName,
-      user: session?.user?.name ?? 'anonymous',
-      userEmail: session?.user?.email ?? 'unknown',
-      userId: userId ?? 'local',
-      browser: browserType,
-      framework: template?.framework ?? 'unknown',
-      template: template ? 'true' : 'false',
-      runnerId: runnerId ?? 'unknown',
-      promptPreview: originalPrompt.substring(0, 100),
-      promptLength: String(originalPrompt.length),
-      model: tags?.find((t: { key: string; value: string }) => t.key === 'model')?.value ?? 'default',
-      runner: tags?.find((t: { key: string; value: string }) => t.key === 'runner')?.value ?? runnerId ?? 'unknown',
-    });
-
     // Persist initial user prompt as first chat message
     try {
       await db.insert(messages).values({
@@ -126,15 +108,6 @@ export async function POST(request: Request) {
       console.error(`[create-from-analysis] Failed to persist initial prompt for project ${project.id}:`, messageError);
     }
 
-    // Track project creation metric
-    Sentry.metrics.count('project.created_from_analysis', 1, {
-      attributes: {
-        project_id: project.id,
-        framework: template?.framework || 'unknown',
-        has_template: String(!!template),
-      }
-    });
-
     // Enrich project with runner connection status before returning
     // This ensures the frontend knows the runner is connected from the start
     const enrichedProject = await enrichProjectWithRunnerStatus(project);
@@ -145,7 +118,6 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('[create-from-analysis] Failed to create project:', error);
-    Sentry.captureException(error);
     return NextResponse.json(
       {
         error: 'Failed to create project',

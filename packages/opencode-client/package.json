@@ -19,7 +19,7 @@
     "dist/**/*"
   ],
   "dependencies": {
-    "@opencode-ai/sdk": "^1.0.0"
+    "@opencode-ai/sdk": "^1.17.8"
   },
   "scripts": {
     "build": "tsup",

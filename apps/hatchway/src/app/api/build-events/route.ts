@@ -23,7 +23,6 @@ import {
 } from '@hatchway/agent-core/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { buildWebSocketServer } from '@hatchway/agent-core/lib/websocket/server';
-import * as Sentry from '@sentry/nextjs';
 import { authenticateRunnerKey, extractRunnerKey, isLocalMode } from '@/lib/auth-helpers';
 
 const SHARED_SECRET = process.env.RUNNER_SHARED_SECRET;
@@ -731,7 +730,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('[build-events] Error processing event:', error);
-    Sentry.captureException(error);
     return NextResponse.json({ error: 'Failed to process event' }, { status: 500 });
   }
 }

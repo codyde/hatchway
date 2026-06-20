@@ -46,10 +46,16 @@ export async function enrichProjectsWithRunnerStatus<T extends { runnerId: strin
  * If the project has no runnerId (new project), uses the first available runner.
  *
  * @param preferredRunnerId - The project's saved runner ID (from project.runnerId)
+ * @param userId - When provided, the "first available runner" fallback is
+ *   restricted to runners owned by this user, preventing cross-tenant routing
+ *   to another user's runner for projects with no saved runnerId.
  * @returns The runner ID if available, or null if the required runner is not connected
  */
-export async function getProjectRunnerId(preferredRunnerId: string | null): Promise<string | null> {
-  const connections = await listRunnerConnections();
+export async function getProjectRunnerId(
+  preferredRunnerId: string | null,
+  userId?: string
+): Promise<string | null> {
+  const connections = await listRunnerConnections(userId);
 
   console.log('🔍 [getProjectRunnerId] Connections:', connections);
   console.log('🔍 [getProjectRunnerId] Project runner:', preferredRunnerId);

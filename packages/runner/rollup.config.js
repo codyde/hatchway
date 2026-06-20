@@ -54,7 +54,6 @@ const external = [
   'util',
 
   // NPM dependencies that are external
-  '@sentry/node',
   '@anthropic-ai/claude-agent-sdk',
   '@openai/codex-sdk',
   'chalk',
@@ -154,19 +153,12 @@ const commonPlugins = [
   json(),
 ];
 
-// Banner for CJS compatibility shim
-const cjsShimBanner = `// Hatchway Runner - Built with Rollup
-import { createRequire as __createRequire } from 'node:module';
-const require = __createRequire(import.meta.url);
-`;
-
 const defaultBanner = '// Hatchway Runner - Built with Rollup';
 
 export default {
   input: {
     'index': 'src/index.ts',
     'cli': 'src/cli.ts',
-    'instrument': 'src/instrument.ts',
   },
   output: {
     dir: 'dist',
@@ -174,7 +166,7 @@ export default {
     sourcemap: false, // No sourcemaps for smaller package size
     entryFileNames: '[name].js',
     chunkFileNames: 'chunks/[name]-[hash].js',
-    banner: (chunk) => chunk.name === 'instrument' ? cjsShimBanner : defaultBanner,
+    banner: defaultBanner,
   },
   external: isExternal,
   plugins: commonPlugins,

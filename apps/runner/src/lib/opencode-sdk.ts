@@ -11,7 +11,6 @@
  * - Runner receives events and transforms them to SSE format for the frontend
  */
 
-import * as Sentry from '@sentry/node';
 import { existsSync, mkdirSync } from 'node:fs';
 import {
   CLAUDE_SYSTEM_PROMPT,
@@ -277,21 +276,6 @@ export function createOpenCodeQuery(
     const { provider: providerID, model: modelID } = parseModelId(normalizeModelId(modelId));
     
     let sessionId: string | null = null;
-    
-    // Start Sentry AI agent span for the entire OpenCode query
-    // This provides visibility into AI operations in Sentry's trace view
-    const aiSpan = Sentry.startInactiveSpan({
-      name: 'opencode.query',
-      op: 'ai.pipeline',
-      attributes: {
-        'ai.pipeline.name': 'opencode',
-        'ai.model_id': `${providerID}/${modelID}`,
-        'ai.provider': providerID,
-        'ai.streaming': true,
-        'gen_ai.system': 'opencode',
-        'gen_ai.request.model': modelID,
-      },
-    });
 
     try {
       // Step 1: Create a session
@@ -312,11 +296,6 @@ export function createOpenCodeQuery(
       const session = await sessionResponse.json();
       sessionId = session.id;
       debugLog(`[runner] [opencode-sdk] Session created: ${sessionId}`);
-      
-      // Update span with session info
-      if (sessionId) {
-        aiSpan?.setAttribute('opencode.session_id', sessionId);
-      }
 
       // Step 2: Subscribe to events
       debugLog('[runner] [opencode-sdk] Subscribing to events...');
@@ -461,19 +440,10 @@ export function createOpenCodeQuery(
       }
 
       debugLog('[runner] [opencode-sdk] Query complete');
-      
-      // Update span with final metrics
-      aiSpan?.setAttribute('opencode.tool_calls', toolCallCount);
-      aiSpan?.setAttribute('opencode.messages', messageCount);
-      aiSpan?.setStatus({ code: 1 }); // OK status
 
     } catch (error) {
       debugLog(`[runner] [opencode-sdk] Error: ${error instanceof Error ? error.message : String(error)}`);
-      Sentry.captureException(error);
-      
-      // Mark span as errored
-      aiSpan?.setStatus({ code: 2, message: error instanceof Error ? error.message : String(error) });
-      
+
       // Yield error result
       yield {
         type: 'result',
@@ -483,9 +453,6 @@ export function createOpenCodeQuery(
       };
       
       throw error;
-    } finally {
-      // End the AI span
-      aiSpan?.end();
     }
   };
 }

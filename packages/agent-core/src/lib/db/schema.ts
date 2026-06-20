@@ -151,6 +151,12 @@ export const projects = pgTable('projects', {
   railwayDomain: text('railway_domain'), // e.g., "myapp-production.up.railway.app"
   railwayDeploymentStatus: text('railway_deployment_status'), // 'deploying' | 'success' | 'failed' | 'crashed'
   railwayLastDeployedAt: timestamp('railway_last_deployed_at'), // Last successful deployment
+  // Execution mode: where builds run for this project
+  executionMode: text('execution_mode').default('local'), // 'local' | 'sandbox'
+  sandboxId: text('sandbox_id'), // Railway sandbox id when executionMode='sandbox' and currently running (warm)
+  sandboxStatus: text('sandbox_status'), // 'provisioning' | 'running' | 'stopped' | 'failed'
+  sandboxCheckpoint: text('sandbox_checkpoint'), // Railway checkpoint key for this project's saved workspace (restore point)
+  sandboxSubdomain: text('sandbox_subdomain'), // Stable railgate subdomain so the preview URL persists across restarts
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => ({

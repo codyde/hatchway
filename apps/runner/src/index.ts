@@ -1,6 +1,3 @@
-// Sentry is initialized via --import flag (see package.json scripts)
-// This ensures instrumentation loads before any other modules
-import * as Sentry from "@sentry/node";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { Codex } from "@openai/codex-sdk";
 import { fileLog, setFileLoggerTuiMode } from "./lib/file-logger.js";
@@ -30,9 +27,10 @@ import {
   setTemplatesPath,
 } from "@hatchway/agent-core";
 import { CLAUDE_CLI_TOOL_REGISTRY } from "@hatchway/agent-core/lib/claude/tools";
+import { resolveProjectPath, resolveWithinProject } from "@hatchway/agent-core/lib/path-safety";
 import { buildLogger } from "@hatchway/agent-core/lib/logging/build-logger";
 import { createBuildStream } from "./lib/build/engine.js";
-import { startDevServer, startDevServerAsync, stopDevServer, checkPortInUse, findAvailablePort } from "./lib/process-manager.js";
+import { startDevServer, startDevServerAsync, stopDevServer, checkPortInUse, findAvailablePort, getDevServer } from "./lib/process-manager.js";
 import { getWorkspaceRoot } from "./lib/workspace.js";
 import {
   transformAgentMessageToSSE,
@@ -48,7 +46,6 @@ import { waitForPort } from "./lib/port-checker.js";
 import { createProjectScopedPermissionHandler } from "./lib/permissions/project-scoped-handler.js";
 import { hmrProxyManager } from "./lib/hmr-proxy-manager.js";
 import { ensureProjectSkills } from "./lib/skills.js";
-import { getPackageVersion } from "./cli/utils/version-info.js";
 import { 
   initRunnerLogger, 
   getLogger,
@@ -617,16 +614,6 @@ function createCodexQuery(): BuildQueryFn {
 
       // Log full prompt being sent to Codex
       if (turnCount === 1) {
-        Sentry.logger.info(
-          Sentry.logger.fmt`Full Codex prompt (Turn 1) ${{
-            prompt: turnPrompt,
-            promptLength: turnPrompt.length,
-            promptPreview: turnPrompt.substring(0, 200),
-            operation: 'codex_query',
-            turnCount: 1,
-          }}`
-        );
-
         // Also log to file
         fileLog.info('━━━ FULL CODEX PROMPT ━━━');
         fileLog.info(turnPrompt);
@@ -1187,32 +1174,11 @@ export async function startRunner(options: RunnerOptions = {}) {
     context: BuildContext,
     event: Record<string, unknown>
   ): Promise<void> {
-    return Sentry.startSpan(
-      {
-        name: `persist.build-event.${event.type}`,
-        op: 'http.client',
-        attributes: {
-          'http.method': 'POST',
-          'http.url': `${apiBaseUrl}/api/build-events`,
-          'event.type': event.type as string,
-          'event.tool_name': event.toolName as string || undefined,
-        },
-      },
-      async () => {
-        // Get trace context for propagation
-        const traceData = Sentry.getTraceData();
+    return await (async () => {
         const headers: Record<string, string> = {
           'Authorization': `Bearer ${runnerSharedSecret}`,
           'Content-Type': 'application/json',
         };
-
-        // Add Sentry trace headers for distributed tracing
-        if (traceData['sentry-trace']) {
-          headers['sentry-trace'] = traceData['sentry-trace'];
-        }
-        if (traceData.baggage) {
-          headers['baggage'] = traceData.baggage;
-        }
 
         const response = await fetchWithRetry(
           `${apiBaseUrl}/api/build-events`,
@@ -1235,8 +1201,7 @@ export async function startRunner(options: RunnerOptions = {}) {
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-      }
-    );
+      })();
   }
 
   /**
@@ -1328,18 +1293,7 @@ export async function startRunner(options: RunnerOptions = {}) {
   async function persistRunnerEvent(
     event: Record<string, unknown>
   ): Promise<void> {
-    // Wrap in Sentry span to create proper trace hierarchy
-    return Sentry.startSpan(
-      {
-        name: `persist.runner-event.${event.type}`,
-        op: 'http.client',
-        attributes: {
-          'http.method': 'POST',
-          'http.url': `${apiBaseUrl}/api/runner/events`,
-          'event.type': event.type as string,
-        },
-      },
-      async () => {
+    return await (async () => {
         try {
           const response = await fetch(`${apiBaseUrl}/api/runner/events`, {
             method: 'POST',
@@ -1355,10 +1309,9 @@ export async function startRunner(options: RunnerOptions = {}) {
           }
         } catch (error) {
           console.error('[runner] Error persisting runner event:', error);
-          throw error; // Re-throw so Sentry span records the error
+          throw error;
         }
-      }
-    );
+      })();
   }
 
   // Event types that trigger DB writes and should be persisted via HTTP
@@ -1393,17 +1346,6 @@ export async function startRunner(options: RunnerOptions = {}) {
 
     const sendOperation = () => {
       try {
-        // Attach trace context to ALL events for distributed tracing
-        // This allows events to be linked back to the originating frontend request
-        const span = Sentry.getActiveSpan();
-        if (span) {
-          const traceData = Sentry.getTraceData();
-          event._sentry = {
-            trace: traceData['sentry-trace'],
-            baggage: traceData.baggage,
-          };
-        }
-
         const eventJson = JSON.stringify(event);
 
         // Only log important events
@@ -1944,7 +1886,6 @@ export async function startRunner(options: RunnerOptions = {}) {
         break;
       }
       case "start-tunnel": {
-        const tunnelStartTime = Date.now();
         try {
           const { port } = command.payload;
           log(`🔗 Starting tunnel for port ${port}...`);
@@ -1964,17 +1905,6 @@ export async function startRunner(options: RunnerOptions = {}) {
           const tunnelUrl = await tunnelManager.createTunnel(port);
           logger.tunnel({ port, url: tunnelUrl, status: 'created' });
 
-          // Instrument tunnel startup timing
-          const tunnelDuration = Date.now() - tunnelStartTime;
-
-          Sentry.metrics.distribution('tunnel_startup_duration', tunnelDuration, {
-            unit: 'millisecond',
-            attributes: {
-              port: port.toString(),
-              success: 'true'
-            }
-          });
-
           sendEvent({
             type: "tunnel-created",
             ...buildEventBase(command.projectId, command.id),
@@ -1983,17 +1913,6 @@ export async function startRunner(options: RunnerOptions = {}) {
           });
         } catch (error) {
           console.error("Failed to create tunnel:", error);
-
-          // Instrument failed tunnel startup timing
-          const tunnelDuration = Date.now() - tunnelStartTime;
-          Sentry.metrics.distribution('tunnel_startup_duration', tunnelDuration, {
-            unit: 'millisecond',
-            attributes: {
-              port: command.payload.port.toString(),
-              success: 'false',
-              error_type: error instanceof Error ? error.constructor.name : 'unknown'
-            }
-          });
 
           sendEvent({
             type: "error",
@@ -2047,7 +1966,8 @@ export async function startRunner(options: RunnerOptions = {}) {
       case "delete-project-files": {
         try {
           const { slug } = command.payload;
-          const projectPath = join(WORKSPACE_ROOT, slug);
+          // Validates the slug and guarantees the path stays inside the workspace
+          const projectPath = resolveProjectPath(WORKSPACE_ROOT, slug);
 
           console.log(`[runner] 🗑️  Deleting project files for slug: ${slug}`);
           console.log(`[runner]   Path: ${projectPath}`);
@@ -2135,17 +2055,12 @@ export async function startRunner(options: RunnerOptions = {}) {
       case "read-file": {
         try {
           const { slug, filePath } = command.payload;
-          const projectPath = join(WORKSPACE_ROOT, slug);
-          const fullPath = join(projectPath, filePath);
+          const projectPath = resolveProjectPath(WORKSPACE_ROOT, slug);
+          const fullPath = resolveWithinProject(projectPath, filePath);
 
           console.log(
             `[runner] 📖 Reading file: ${filePath} from project: ${slug}`
           );
-
-          // Security: Ensure path is within project directory
-          if (!fullPath.startsWith(projectPath)) {
-            throw new Error("Invalid file path - outside project directory");
-          }
 
           const { readFile, stat } = await import("node:fs/promises");
           const stats = await stat(fullPath);
@@ -2178,17 +2093,12 @@ export async function startRunner(options: RunnerOptions = {}) {
       case "write-file": {
         try {
           const { slug, filePath, content } = command.payload;
-          const projectPath = join(WORKSPACE_ROOT, slug);
-          const fullPath = join(projectPath, filePath);
+          const projectPath = resolveProjectPath(WORKSPACE_ROOT, slug);
+          const fullPath = resolveWithinProject(projectPath, filePath);
 
           console.log(
             `[runner] 💾 Writing file: ${filePath} to project: ${slug}`
           );
-
-          // Security: Ensure path is within project directory
-          if (!fullPath.startsWith(projectPath)) {
-            throw new Error("Invalid file path - outside project directory");
-          }
 
           const { writeFile } = await import("node:fs/promises");
           await writeFile(fullPath, content, "utf-8");
@@ -2218,16 +2128,13 @@ export async function startRunner(options: RunnerOptions = {}) {
       case "list-files": {
         try {
           const { slug, path: subPath } = command.payload;
-          const projectPath = join(WORKSPACE_ROOT, slug);
-          const targetPath = subPath ? join(projectPath, subPath) : projectPath;
+          const projectPath = resolveProjectPath(WORKSPACE_ROOT, slug);
+          const targetPath = subPath
+            ? resolveWithinProject(projectPath, subPath)
+            : projectPath;
 
           console.log(`[runner] 📁 Listing files for project: ${slug}`);
           console.log(`[runner]   Path: ${targetPath}`);
-
-          // Security: Ensure path is within project directory
-          if (!targetPath.startsWith(projectPath)) {
-            throw new Error("Invalid path - outside project directory");
-          }
 
           const { readdir, stat } = await import("node:fs/promises");
           const entries = await readdir(targetPath);
@@ -2277,7 +2184,7 @@ export async function startRunner(options: RunnerOptions = {}) {
         const model = agent === 'claude-code' && 
           (claudeModelFromPayload === 'claude-haiku-4-5' || 
            claudeModelFromPayload === 'claude-sonnet-4-6' || 
-           claudeModelFromPayload === 'claude-opus-4-6')
+           claudeModelFromPayload === 'claude-opus-4-8')
           ? claudeModelFromPayload
           : DEFAULT_CLAUDE_MODEL_ID;
 
@@ -2301,7 +2208,6 @@ export async function startRunner(options: RunnerOptions = {}) {
         fileLog.info("Template:", command.payload?.template);
 
         // REMOVED: Manual Sentry span creation - rely on automatic instrumentation
-        // await Sentry.startSpan({ name: "runner.build", op: "ai.build", ... }, async () => {
         // Build operation (previously wrapped in Sentry span)
         try {
           loggedFirstChunk = false;
@@ -2310,10 +2216,12 @@ export async function startRunner(options: RunnerOptions = {}) {
           }
 
           // Calculate the project directory using slug
+          // Slug may be LLM-derived from the user prompt - validate before
+          // it touches the filesystem
           const projectSlug =
             command.payload.projectSlug || command.projectId;
           const projectName = command.payload.projectName || projectSlug;
-          const projectDirectory = resolve(WORKSPACE_ROOT, projectSlug);
+          const projectDirectory = resolveProjectPath(WORKSPACE_ROOT, projectSlug);
 
           log("project directory:", projectDirectory);
           log("project slug:", projectSlug);
@@ -2328,7 +2236,7 @@ export async function startRunner(options: RunnerOptions = {}) {
             agent === "claude-code" &&
             (command.payload.claudeModel === "claude-haiku-4-5" ||
               command.payload.claudeModel === "claude-sonnet-4-6" ||
-              command.payload.claudeModel === "claude-opus-4-6")
+              command.payload.claudeModel === "claude-opus-4-8")
               ? command.payload.claudeModel
               : DEFAULT_CLAUDE_MODEL_ID;
           
@@ -2946,11 +2854,7 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : "Failed to run build";
           logger.buildFailed(errorMessage);
-          
-          Sentry.getActiveSpan()?.setStatus({
-            code: 2, // SPAN_STATUS_ERROR
-            message: "Build failed",
-          });
+
           sendEvent({
             type: "build-failed",
             ...buildEventBase(command.projectId, command.id),
@@ -2975,11 +2879,26 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
         // HTTP proxy request - fetch from local dev server and return response
         try {
           const { requestId, method, path: reqPath, headers, body, port } = command.payload;
-          
-          debugLog(`🔀 HTTP proxy request: ${method} ${reqPath} → localhost:${port}`);
-          
+
+          // SSRF guard: only proxy to the dev server this runner started for
+          // this project - never to arbitrary localhost ports
+          const devServer = getDevServer(command.projectId);
+          if (!devServer?.port) {
+            throw new Error(`No active dev server for project ${command.projectId}`);
+          }
+          if (port !== undefined && port !== devServer.port) {
+            throw new Error(`Port ${port} does not match project dev server port ${devServer.port}`);
+          }
+          const targetPort = devServer.port;
+
+          if (typeof reqPath !== 'string' || !reqPath.startsWith('/')) {
+            throw new Error(`Invalid proxy path: ${String(reqPath)}`);
+          }
+
+          debugLog(`🔀 HTTP proxy request: ${method} ${reqPath} → localhost:${targetPort}`);
+
           // Build the target URL
-          const targetUrl = `http://localhost:${port}${reqPath}`;
+          const targetUrl = `http://localhost:${targetPort}${reqPath}`;
           
           // Decode body if present
           const requestBody = body ? Buffer.from(body, 'base64') : undefined;
@@ -2990,7 +2909,7 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
             headers: {
               ...headers,
               // Remove hop-by-hop headers
-              'host': `localhost:${port}`,
+              'host': `localhost:${targetPort}`,
             },
             body: requestBody,
             // Don't follow redirects - let the client handle them
@@ -3066,8 +2985,33 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
       }
       case "hmr-connect": {
         // Connect to local HMR WebSocket server
+        // SSRF guard: only connect to the dev server this runner started for
+        // this project - never to an arbitrary server-supplied port
         const { connectionId, port, protocol } = command.payload;
-        hmrProxyManager.connect(connectionId, port, command.projectId, protocol);
+        const hmrDevServer = getDevServer(command.projectId);
+        // Surface a hmr-error (not a silent break) so the frontend's pending
+        // connection fails fast instead of hanging until its timeout.
+        if (!hmrDevServer?.port) {
+          console.warn(`[runner] ⚠️  hmr-connect rejected: no active dev server for project ${command.projectId}`);
+          sendEvent({
+            type: "hmr-error",
+            ...buildEventBase(command.projectId, command.id),
+            connectionId,
+            error: "No active dev server for project",
+          });
+          break;
+        }
+        if (port !== undefined && port !== hmrDevServer.port) {
+          console.warn(`[runner] ⚠️  hmr-connect rejected: port ${port} does not match dev server port ${hmrDevServer.port}`);
+          sendEvent({
+            type: "hmr-error",
+            ...buildEventBase(command.projectId, command.id),
+            connectionId,
+            error: "Requested port does not match the project's dev server",
+          });
+          break;
+        }
+        hmrProxyManager.connect(connectionId, hmrDevServer.port, command.projectId, protocol);
         break;
       }
       case "hmr-message": {
@@ -3279,15 +3223,6 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
       // Update logger connection status
       logger.setConnected(true);
 
-      Sentry.logger.info('Runner connected to server', {
-        runnerId: RUNNER_ID,
-        version: getPackageVersion(),
-        user: os.userInfo().username,
-        hostname: os.hostname(),
-        platform: os.platform(),
-        serverUrl: WS_URL,
-        workspace: WORKSPACE_ROOT,
-      });
       debugLog("Health check: ping/pong enabled, command timeout: 5 minutes");
       publishStatus();
       scheduleHeartbeat();
@@ -3335,119 +3270,9 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
         // BUG FIX: Update lastCommandReceived timestamp
         lastCommandReceived = Date.now();
 
-        // Get projectId - analyze-project commands don't have one yet
-        const projectIdForTelemetry = command.type === 'analyze-project' 
-          ? 'pending-analysis' 
-          : (command as { projectId: string }).projectId;
-
-        // Continue trace from frontend - each build now starts its trace in the frontend
-        // This creates a span within the continued trace for the runner's work
-        if (command._sentry?.trace) {
-          console.log("[runner] Continuing trace from frontend:", command._sentry.trace.substring(0, 50));
-          await Sentry.continueTrace(
-            {
-              sentryTrace: command._sentry.trace,
-              baggage: command._sentry.baggage,
-            },
-            async () => {
-              // Create a span for this command execution within the continued trace
-              await Sentry.startSpan(
-                {
-                  name: `runner.${command.type}`,
-                  op: command.type === 'start-build' ? 'build.runner' : `runner.${command.type}`,
-                  attributes: {
-                    'command.type': command.type,
-                    'command.id': command.id,
-                    'project.id': projectIdForTelemetry,
-                    'trace.continued': true,
-                  },
-                },
-                async (span) => {
-                  try {
-                    Sentry.setTag("command_type", command.type);
-                    Sentry.setTag("project_id", projectIdForTelemetry);
-                    Sentry.setTag("command_id", command.id);
-
-                    // Capture build metrics for start-build commands
-                    if (command.type === 'start-build' && command.payload) {
-                      const agent = command.payload.agent ?? 'claude-code';
-                      const claudeModel = agent === 'claude-code' && 
-                        (command.payload.claudeModel === 'claude-haiku-4-5' || 
-                         command.payload.claudeModel === 'claude-sonnet-4-6' || 
-                         command.payload.claudeModel === 'claude-opus-4-6')
-                        ? command.payload.claudeModel
-                        : 'claude-sonnet-4-6';
-                      
-                      Sentry.metrics.count('runner.build.started', 1, {
-                        attributes: {
-                          project_id: command.projectId,
-                          model: agent === 'claude-code' ? claudeModel : agent,
-                          framework: command.payload.template?.framework || 'unknown',
-                          operation_type: command.payload.operationType || 'initial-build',
-                        }
-                      });
-                    }
-
-                    await handleCommand(command);
-                  } catch (error) {
-                    span.setStatus({ code: 2, message: error instanceof Error ? error.message : 'Command failed' });
-                    throw error;
-                  }
-                }
-              );
-            }
-          );
-        } else {
-          console.log("[runner] No trace context - starting isolated span");
-          // Create an isolated span when no trace context is provided
-          await Sentry.startSpan(
-            {
-              name: `runner.${command.type}`,
-              op: command.type === 'start-build' ? 'build.runner' : `runner.${command.type}`,
-              attributes: {
-                'command.type': command.type,
-                'command.id': command.id,
-                'project.id': projectIdForTelemetry,
-                'trace.continued': false,
-              },
-            },
-            async (span) => {
-              try {
-                Sentry.setTag("command_type", command.type);
-                Sentry.setTag("project_id", projectIdForTelemetry);
-                Sentry.setTag("command_id", command.id);
-
-                // Capture build metrics for start-build commands
-                if (command.type === 'start-build' && command.payload) {
-                  const agent = command.payload.agent ?? 'claude-code';
-                  const claudeModel = agent === 'claude-code' && 
-                    (command.payload.claudeModel === 'claude-haiku-4-5' || 
-                     command.payload.claudeModel === 'claude-sonnet-4-6' || 
-                     command.payload.claudeModel === 'claude-opus-4-6')
-                    ? command.payload.claudeModel
-                    : 'claude-sonnet-4-6';
-                  
-                  Sentry.metrics.count('runner.build.started', 1, {
-                    attributes: {
-                      project_id: command.projectId,
-                      model: agent === 'claude-code' ? claudeModel : agent,
-                      framework: command.payload.template?.framework || 'unknown',
-                      operation_type: command.payload.operationType || 'initial-build',
-                    }
-                  });
-                }
-
-                await handleCommand(command);
-              } catch (error) {
-                span.setStatus({ code: 2, message: error instanceof Error ? error.message : 'Command failed' });
-                throw error;
-              }
-            }
-          );
-        }
+        await handleCommand(command);
       } catch (error) {
         console.error("Failed to parse command", error);
-        Sentry.captureException(error);
         sendEvent({
           type: "error",
           ...buildEventBase(undefined, randomUUID()),
@@ -3560,9 +3385,6 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
 
     // Final cleanup of any remaining tunnels
     await tunnelManager.closeAll();
-
-    // Flush Sentry events before exiting
-    await Sentry.flush(2000);
 
     log("shutdown complete");
   };

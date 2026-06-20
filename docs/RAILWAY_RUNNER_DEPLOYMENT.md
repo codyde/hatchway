@@ -142,10 +142,6 @@ HEALTH_PORT=8080
 # Enable verbose build logging
 DEBUG_BUILD=1
 
-# Sentry Configuration (if using)
-SENTRY_DSN=https://...
-SENTRY_ENVIRONMENT=production
-SENTRY_RELEASE=${{RAILWAY_GIT_COMMIT_SHA}}
 
 # Anthropic API Key (for AI builds)
 ANTHROPIC_API_KEY=${{shared.ANTHROPIC_API_KEY}}
@@ -540,7 +536,7 @@ After deployment:
 | **Access** | localhost only | Accessible from anywhere |
 | **Maintenance** | Manual updates | Auto-deploy from Git |
 | **TUI Dashboard** | Yes (Ink.js) | No (service mode) |
-| **Logs** | Terminal | Railway logs + Sentry |
+| **Logs** | Terminal | Railway logs |
 
 ---
 

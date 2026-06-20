@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
-import { db } from '@hatchway/agent-core/lib/db/client';
 import { projects } from '@hatchway/agent-core/lib/db/schema';
-import { eq } from 'drizzle-orm';
 import { SELECTION_SCRIPT } from '@hatchway/agent-core/lib/selection/injector';
 import { httpProxyManager, buildWebSocketServer } from '@hatchway/agent-core/lib/websocket';
+import { requireProjectOwnership, handleAuthError } from '@/lib/auth-helpers';
 
 // Feature flag for WebSocket proxy (can be controlled via env var)
 // When enabled, uses WebSocket tunnel instead of Cloudflare tunnel for remote access
@@ -62,16 +61,10 @@ export async function POST(
   const { id } = await params;
   const url = new URL(req.url);
   const path = url.searchParams.get('path') || '/';
-  let proj: (typeof projects.$inferSelect) | undefined;
 
   try {
-    // Get project
-    const project = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
-    if (project.length === 0) {
-      return new NextResponse('Project not found', { status: 404 });
-    }
-
-    proj = project[0];
+    // Verify user owns this project
+    const { project: proj } = await requireProjectOwnership(id);
 
     // Check if server running
     if (proj.devServerStatus !== 'running' || !proj.devServerPort) {
@@ -147,6 +140,9 @@ export async function POST(
     });
 
   } catch (error) {
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+
     console.error('❌ Proxy POST error:', error);
     return new NextResponse(
       `Proxy failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -165,13 +161,9 @@ export async function GET(
   let proj: (typeof projects.$inferSelect) | undefined;
 
   try {
-    // Get project
-    const project = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
-    if (project.length === 0) {
-      return new NextResponse('Project not found', { status: 404 });
-    }
-
-    proj = project[0];
+    // Verify user owns this project
+    const { project } = await requireProjectOwnership(id);
+    proj = project;
 
     // Check if server running
     if (proj.devServerStatus !== 'running' || !proj.devServerPort) {
@@ -717,6 +709,9 @@ export async function GET(
     return new NextResponse(buffer, { headers });
 
   } catch (error) {
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+
     console.error('❌ Proxy error:', error);
     console.error('   Project:', id);
     console.error('   Path:', path);

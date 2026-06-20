@@ -30,6 +30,14 @@
       "types": "./dist/lib/build-helpers.d.ts",
       "default": "./dist/lib/build-helpers.js"
     },
+    "./lib/path-safety": {
+      "types": "./dist/lib/path-safety.d.ts",
+      "default": "./dist/lib/path-safety.js"
+    },
+    "./lib/timing-safe-equal": {
+      "types": "./dist/lib/timing-safe-equal.d.ts",
+      "default": "./dist/lib/timing-safe-equal.js"
+    },
     "./lib/claude/tools": {
       "types": "./dist/lib/claude/tools.d.ts",
       "default": "./dist/lib/claude/tools.js"
@@ -179,12 +187,11 @@
     "dist/**/*"
   ],
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.45",
-    "@sentry/node": "^10.37.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.181",
     "ai": "^5.0.79",
-    "better-auth": "^1.4.9",
+    "better-auth": "^1.6.19",
     "clsx": "^2.1.1",
-    "drizzle-orm": "^0.44.7",
+    "drizzle-orm": "^0.45.2",
     "lucide-react": "^0.544.0",
     "pg": "^8.13.1",
     "server-only": "^0.0.1",

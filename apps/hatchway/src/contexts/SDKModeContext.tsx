@@ -41,7 +41,7 @@ export function getEnabledSDKModes(): SDKMode[] {
 // Model arrays for each SDK mode - add new models here as needed
 export const AGENT_SDK_MODELS = [
   'claude-sonnet-4-6',
-  'claude-opus-4-6',
+  'claude-opus-4-8',
   'claude-haiku-4-5',
   'gpt-5.2-codex',
 ];

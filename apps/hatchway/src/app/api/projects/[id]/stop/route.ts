@@ -8,6 +8,7 @@ import { sendCommandToRunner } from '@hatchway/agent-core/lib/runner/broker-stat
 import { getProjectRunnerId } from '@/lib/runner-utils';
 import type { StopDevServerCommand } from '@/shared/runner/messages';
 import { requireProjectOwnership, handleAuthError } from '@/lib/auth-helpers';
+import { destroySandbox } from '@/lib/sandbox/manager';
 
 // POST /api/projects/:id/stop - Stop dev server
 export async function POST(
@@ -21,6 +22,19 @@ export async function POST(
 
     // Verify user owns this project
     const { project } = await requireProjectOwnership(id);
+
+    // Sandbox mode: tear the whole sandbox down (this also stops the dev server
+    // and the in-sandbox runner). Best-effort even if the runner already
+    // disconnected (e.g. idle-reaped), so we never leak a sandbox.
+    if (project.sandboxId) {
+      console.log(`[stop-route] Sandbox mode - destroying sandbox ${project.sandboxId} for project ${id}`);
+      await releasePortForProject(id);
+      await destroySandbox(project);
+      await db.update(projects)
+        .set({ devServerPort: null, tunnelUrl: null, devServerStatus: 'stopped', lastActivityAt: new Date() })
+        .where(eq(projects.id, id));
+      return NextResponse.json({ message: 'Sandbox stopped' }, { status: 202 });
+    }
 
     // Try to use project's saved runner, fallback to any available runner
     const runnerId = await getProjectRunnerId(project.runnerId);

@@ -6,11 +6,9 @@
  * without the full CLI overhead (init, build, database, etc.)
  */
 
-// IMPORTANT: Ensure vendor packages are extracted before any imports
 import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,28 +28,6 @@ function findPackageRoot(startDir: string): string {
 }
 
 const packageRoot = findPackageRoot(__dirname);
-
-// Check if running in development mode
-const isLinkedDevelopment = packageRoot.includes('/hatchway/packages/runner');
-
-// Only run vendor install for production global installs
-if (!isLinkedDevelopment) {
-  const nodeModulesDir = dirname(packageRoot);
-  const sentryNodePath = join(nodeModulesDir, "..", "@sentry", "node");
-
-  if (!existsSync(sentryNodePath)) {
-    try {
-      const installScript = join(packageRoot, "scripts/install-vendor.js");
-      execFileSync("node", [installScript], {
-        cwd: packageRoot,
-        stdio: "pipe"
-      });
-    } catch (error) {
-      console.error("Failed to initialize vendor packages:", error);
-      process.exit(1);
-    }
-  }
-}
 
 import { Command } from 'commander';
 import chalk from 'chalk';

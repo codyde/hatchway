@@ -1,11 +1,13 @@
-name: Release Hatchway CLI
+name: Release Hatchway CLI (manual)
+
+# Manual republish/recovery tool ONLY.
+# Normal releases are handled end-to-end by auto-release.yml; this workflow
+# intentionally does NOT trigger on tags - that previously caused every
+# release to publish twice (and built from main instead of the tag).
+# To republish a specific version, dispatch this workflow from the tag ref.
 
 on:
-  push:
-    tags:
-      - 'v*'      # Trigger on tags like v0.4.3
-      - 'cli-v*'  # Also support legacy cli-v0.1.0 format
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:  # Manual trigger only
 
 permissions:
   contents: write  # Needed to create releases
@@ -18,10 +20,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # Fetch full history to get the version bump commit
           fetch-depth: 0
-          # Checkout main branch (which has the version bump) instead of the tag
-          ref: main
+          # Builds the exact ref the workflow was dispatched on (branch or tag)
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

@@ -9,6 +9,7 @@ import {
 import { eq, desc, inArray, and, sql } from 'drizzle-orm';
 import { deserializeGenerationState } from '@hatchway/agent-core/lib/generation-persistence';
 import { cleanupStuckBuilds } from '@hatchway/agent-core/lib/runner/persistent-event-processor';
+import { requireProjectOwnership, handleAuthError } from '@/lib/auth-helpers';
 import type { GenerationState, ToolCall, TodoItem, TextMessage } from '@/types/generation';
 
 function serializeContent(content: unknown): string {
@@ -63,6 +64,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+
+    // Verify user owns this project
+    await requireProjectOwnership(id);
 
     // CLEANUP: On reconnection, check for and finalize stuck builds
     // This runs every time a user reconnects/refreshes, providing natural cleanup
@@ -270,6 +274,9 @@ export async function GET(
       sessions: sessionsWithRelations,
     });
   } catch (error) {
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+
     console.error('Error fetching messages:', error);
     return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 });
   }
@@ -282,6 +289,10 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+
+    // Verify user owns this project
+    await requireProjectOwnership(id);
+
     const { role, content, parts } = await req.json();
 
     if (!role) {
@@ -323,6 +334,9 @@ export async function POST(
 
     return NextResponse.json({ message: formatted });
   } catch (error) {
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+
     console.error('Error saving message:', error);
     return NextResponse.json({ error: 'Failed to save message' }, { status: 500 });
   }

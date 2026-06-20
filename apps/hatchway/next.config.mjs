@@ -1,4 +1,3 @@
-import {withSentryConfig} from "@sentry/nextjs";
 import {fileURLToPath} from "url";
 import path from "path";
 
@@ -8,14 +7,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   // Standalone output for containerized deployments (Railway, Docker)
   output: 'standalone',
-  // Disable Turbopack - PGlite WASM files don't resolve correctly with Turbopack
-  turbopack: false,
+  // NOTE: This app builds with webpack (not Turbopack), selected via the
+  // `--webpack` flag on next build/dev/start, because of the webpack() resolve
+  // alias config below. Migrating those aliases to `turbopack.resolveAlias`
+  // would let this run on Turbopack (the Next 16 default).
   // Allow deployment even when TypeScript or ESLint report errors
   typescript: {
     ignoreBuildErrors: true,
   },
   outputFileTracingRoot: path.resolve(__dirname, "..", ".."),
   transpilePackages: ['@hatchway/agent-core'],
+  // Keep the Railway SDK (and its tsx/esbuild IaC deps) out of the webpack
+  // bundle — it's used only server-side (sandbox manager) and is required at
+  // runtime from node_modules.
+  serverExternalPackages: ['railway'],
   // Reduce noise from frequent API endpoint calls
   logging: {
     fetches: {
@@ -41,36 +46,4 @@ const nextConfig = {
   },
 };
 
-export default withSentryConfig(nextConfig, {
-  // For all available options, see:
-  // https://www.npmjs.com/package/@sentry/webpack-plugin#options
-
-  org: "buildwithcode",
-
-  project: "hatchwayprojects",
-
-  // Only print logs for uploading source maps in CI
-  silent: !process.env.CI,
-
-  // For all available options, see:
-  // https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/
-
-  // Upload a larger set of source maps for prettier stack traces (increases build time)
-  widenClientFileUpload: true,
-
-  // Uncomment to route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
-  // This can increase your server load as well as your hosting bill.
-  // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
-  // side errors will fail.
-  // tunnelRoute: "/monitoring",
-
-  // Webpack-specific options (new location for deprecated options)
-  webpack: {
-    // Automatically tree-shake Sentry logger statements to reduce bundle size
-    treeshake: {
-      removeDebugLogging: true,
-    },
-    // Enables automatic instrumentation of Vercel Cron Monitors
-    automaticVercelMonitors: true,
-  },
-});
+export default nextConfig;

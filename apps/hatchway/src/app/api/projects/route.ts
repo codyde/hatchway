@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import * as Sentry from '@sentry/nextjs';
 import { db } from '@hatchway/agent-core/lib/db/client';
 import { projects, messages } from '@hatchway/agent-core/lib/db/schema';
 import { eq, or, isNull } from 'drizzle-orm';
@@ -146,17 +145,6 @@ export async function POST(request: Request) {
 
     console.log('Selected tags:', tags);
 
-    Sentry.logger.info('Project creation started (fallback path)', {
-      user: session?.user?.name ?? 'anonymous',
-      userEmail: session?.user?.email ?? 'unknown',
-      userId: userId ?? 'local',
-      agent,
-      browser: browserType,
-      promptPreview: prompt.substring(0, 100),
-      promptLength: String(prompt.length),
-      tagCount: String(tags?.length ?? 0),
-    });
-
     // NOTE: This endpoint now uses FALLBACK naming only (no AI calls).
     // The primary path uses runner analysis + create-from-analysis endpoint.
     console.log('📝 Using fallback metadata generation (no AI)');
@@ -187,21 +175,6 @@ export async function POST(request: Request) {
 
     console.log(`✅ Project created: ${project.id}`);
 
-    Sentry.logger.info('Project created (fallback path)', {
-      projectId: project.id,
-      projectSlug: finalSlug,
-      projectName: metadata.friendlyName,
-      user: session?.user?.name ?? 'anonymous',
-      userEmail: session?.user?.email ?? 'unknown',
-      userId: userId ?? 'local',
-      agent,
-      browser: browserType,
-      promptPreview: prompt.substring(0, 100),
-      model: tags?.find((t: { key: string; value: string }) => t.key === 'model')?.value ?? 'default',
-      framework: tags?.find((t: { key: string; value: string }) => t.key === 'framework')?.value ?? 'unknown',
-      runner: tags?.find((t: { key: string; value: string }) => t.key === 'runner')?.value ?? 'unknown',
-    });
-
     // Persist initial user prompt as first chat message
     try {
       await db.insert(messages).values({
@@ -228,14 +201,6 @@ export async function POST(request: Request) {
       });
     }
     
-    // Track project submission
-    console.log('[DEBUG] About to send project.submitted metric with attributes:', submissionAttributes);
-    Sentry.metrics.count('project.submitted', 1, {
-      attributes: submissionAttributes
-      // e.g., { project_id: '123', browser: 'chrome', model: 'claude-sonnet-4-6', framework: 'next', brand: 'sentry', runner: 'abc-123' }
-    });
-    console.log('[DEBUG] Metric call completed');
-
     return NextResponse.json({
       project,
     });

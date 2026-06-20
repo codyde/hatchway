@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
-import { db } from '@hatchway/agent-core/lib/db/client';
-import { projects } from '@hatchway/agent-core/lib/db/schema';
-import { eq } from 'drizzle-orm';
 import { readdir, stat } from 'fs/promises';
 import { join } from 'path';
+import { requireProjectOwnership, handleAuthError } from '@/lib/auth-helpers';
 
 interface FileNode {
   name: string;
@@ -70,14 +68,8 @@ export async function GET(
   try {
     const { id } = await params;
 
-    // Get project from DB
-    const project = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
-
-    if (project.length === 0) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-    }
-
-    const proj = project[0];
+    // Verify user owns this project
+    const { project: proj } = await requireProjectOwnership(id);
 
     if (!proj.path) {
       return NextResponse.json({ files: [] });
@@ -93,6 +85,9 @@ export async function GET(
     const files = await buildFileTree(proj.path);
     return NextResponse.json({ files });
   } catch (error) {
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+
     console.error('Error fetching files:', error);
     return NextResponse.json({ error: 'Failed to fetch files' }, { status: 500 });
   }

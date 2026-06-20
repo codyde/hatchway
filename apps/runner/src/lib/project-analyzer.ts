@@ -15,7 +15,6 @@ import { z } from 'zod';
 import * as os from 'os';
 import * as path from 'path';
 import { existsSync, mkdirSync } from 'fs';
-import * as Sentry from '@sentry/node';
 import type { AgentId, ClaudeModelId } from '@hatchway/agent-core/types/agent';
 import type { AppliedTag } from '@hatchway/agent-core/types/tags';
 import {
@@ -31,7 +30,7 @@ import type { RunnerEvent } from '@hatchway/agent-core';
 const MODEL_MAP: Record<string, string> = {
   'claude-haiku-4-5': 'claude-sonnet-4-6', // Haiku 4.5 not yet available, use Sonnet
   'claude-sonnet-4-6': 'claude-sonnet-4-6',
-  'claude-opus-4-6': 'claude-opus-4-6',
+  'claude-opus-4-8': 'claude-opus-4-8',
 };
 
 function resolveModelName(modelId: string): string {
@@ -113,7 +112,6 @@ CRITICAL: Your response must START with { and END with }. Output only the JSON o
     }
   } catch (error) {
     console.error('[project-analyzer] SDK query failed:', error);
-    Sentry.captureException(error);
     throw error;
   }
 

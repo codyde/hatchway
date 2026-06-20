@@ -51,6 +51,7 @@ export interface BuildRequest {
   prompt: string;
   messageParts?: MessagePart[]; // Multi-modal content (text, images, etc.)
   runnerId?: string; // Optional runner ID - falls back to RUNNER_DEFAULT_ID
+  executionMode?: 'local' | 'sandbox'; // Where the build runs (default 'local'); 'sandbox' provisions a Railway sandbox runner
   buildId?: string;
   agent?: AgentId; // Selected coding agent provider (Claude Code, OpenAI Codex, etc.)
   claudeModel?: ClaudeModelId;

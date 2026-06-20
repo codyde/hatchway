@@ -38,6 +38,8 @@ export default defineConfig({
     'lib/selection/injector': 'src/lib/selection/injector.ts',
     'lib/generation-persistence': 'src/lib/generation-persistence.ts',
     'lib/utils': 'src/lib/utils.ts',
+    'lib/path-safety': 'src/lib/path-safety.ts',
+    'lib/timing-safe-equal': 'src/lib/timing-safe-equal.ts',
     'lib/tags/resolver': 'src/lib/tags/resolver.ts',
     'lib/tags/model-parser': 'src/lib/tags/model-parser.ts',
     'lib/tags/serialization': 'src/lib/tags/serialization.ts',
@@ -71,7 +73,6 @@ export default defineConfig({
     
     // NPM dependencies
     '@anthropic-ai/claude-agent-sdk',
-    '@sentry/node',
     'ai',
     'better-auth',
     'clsx',

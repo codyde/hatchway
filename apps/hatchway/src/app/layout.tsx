@@ -4,6 +4,7 @@ import "./globals.css";
 import { ProjectProvider } from "@/contexts/ProjectContext";
 import { RunnerProvider } from "@/contexts/RunnerContext";
 import { AgentProvider } from "@/contexts/AgentContext";
+import { ExecutionModeProvider } from "@/contexts/ExecutionModeContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { QueryProvider } from "./providers";
@@ -72,13 +73,15 @@ export default function RootLayout({
           <ThemeProvider>
             <AuthProvider isLocalMode={isLocalMode}>
               <AgentProvider>
-                <RunnerProvider>
-                  <ProjectProvider>
-                    <ToastProvider>
-                      {children}
-                    </ToastProvider>
-                  </ProjectProvider>
-                </RunnerProvider>
+                <ExecutionModeProvider>
+                  <RunnerProvider>
+                    <ProjectProvider>
+                      <ToastProvider>
+                        {children}
+                      </ToastProvider>
+                    </ProjectProvider>
+                  </RunnerProvider>
+                </ExecutionModeProvider>
               </AgentProvider>
             </AuthProvider>
           </ThemeProvider>

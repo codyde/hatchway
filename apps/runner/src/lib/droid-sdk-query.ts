@@ -10,7 +10,6 @@
 
 import { DroidSession } from '@hatchway/droid-sdk';
 import type { DroidEvent, DroidSessionOptions } from '@hatchway/droid-sdk';
-import * as Sentry from '@sentry/node';
 import { existsSync, mkdirSync } from 'node:fs';
 import { ensureProjectSkills } from './skills.js';
 import { CLAUDE_SYSTEM_PROMPT } from '@hatchway/agent-core';
@@ -318,15 +317,6 @@ export function createDroidQuery(modelId?: string) {
       process.stderr.write(`[runner] [droid-sdk] Events received: ${messageCount}\n`);
       process.stderr.write(`[runner] [droid-sdk] Tool calls: ${toolCallCount}\n`);
       process.stderr.write(`[runner] [droid-sdk] Last event type: ${lastEventType}\n\n`);
-      Sentry.captureException(error, {
-        extra: {
-          modelId,
-          workingDirectory,
-          promptLength: prompt.length,
-          eventsReceived: messageCount,
-          toolCalls: toolCallCount,
-        }
-      });
       throw error;
     } finally {
       // Cleanup session

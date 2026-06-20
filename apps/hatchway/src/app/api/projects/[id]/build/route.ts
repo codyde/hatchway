@@ -17,8 +17,8 @@ import type { ClaudeModelId } from '@hatchway/agent-core/types/agent';
 import { parseModelTag } from '@hatchway/agent-core/lib/tags/model-parser';
 import { TAG_DEFINITIONS } from '@hatchway/agent-core/config/tags';
 import { projectEvents } from '@/lib/project-events';
-import * as Sentry from '@sentry/nextjs';
 import { requireProjectOwnership, AuthError } from '@/lib/auth-helpers';
+import { ensureSandboxRunner } from '@/lib/sandbox/manager';
 
 /**
  * NOTE: Template analysis and project name generation are now handled by the runner.
@@ -33,46 +33,20 @@ import { requireProjectOwnership, AuthError } from '@/lib/auth-helpers';
  * (from the runner analysis), or it will let the runner auto-select.
  */
 
-export const maxDuration = 30;
+// Allow headroom for Sandbox mode, where the route provisions a Railway sandbox
+// and waits for its runner to connect before dispatching the build.
+export const maxDuration = 120;
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Continue trace from frontend - the frontend starts the trace when user submits a build
-  // This maintains the distributed tracing chain: Frontend → API → Runner → AI
-  // Sentry's automatic instrumentation continues the trace from sentry-trace/baggage headers
-  const sentryTraceHeader = req.headers.get('sentry-trace');
-  const baggageHeader = req.headers.get('baggage');
-
-  console.log('[build-route] Incoming trace context:', {
-    hasTrace: !!sentryTraceHeader,
-    tracePreview: sentryTraceHeader?.substring(0, 50),
-  });
-
-  return await Sentry.withIsolationScope(async (scope) => {
-    // Create a span for this build request - it will be a child of the frontend trace
-    // if trace headers are present (automatic continuation by Sentry SDK)
-    return await Sentry.startSpan(
-      {
-        name: 'POST /api/projects/[id]/build',
-        op: 'http.server.build',
-        // REMOVED: forceTransaction: true - now continues trace from frontend
-        attributes: {
-          'http.method': 'POST',
-          'http.route': '/api/projects/[id]/build',
-          'trace.continued_from_frontend': !!sentryTraceHeader,
-        },
-      },
-      async () => {
+  return await (async () => {
         let commandId: string | undefined;
         let cleanup: (() => void) | undefined;
         try {
           const { id } = await params;
 
-          // Set project ID on scope for this trace
-          scope.setTag('project.id', id);
-          
     // Verify user owns this project
     const { project } = await requireProjectOwnership(id);
     
@@ -119,7 +93,7 @@ export async function POST(
     } else {
       // Fallback to body parameters if no model tag
       claudeModel =
-        agentId === 'claude-code' && (body.claudeModel === 'claude-haiku-4-5' || body.claudeModel === 'claude-sonnet-4-6' || body.claudeModel === 'claude-opus-4-6')
+        agentId === 'claude-code' && (body.claudeModel === 'claude-haiku-4-5' || body.claudeModel === 'claude-sonnet-4-6' || body.claudeModel === 'claude-opus-4-8')
           ? body.claudeModel
           : DEFAULT_CLAUDE_MODEL_ID;
     }
@@ -131,6 +105,34 @@ export async function POST(
       if (runnerTag) {
         runnerId = runnerTag.value;
         console.log('[build-route] ✓ Runner enforced from tags:', runnerId);
+      }
+    }
+
+    // EXECUTION MODE: 'local' (default) uses the connected runner above;
+    // 'sandbox' provisions a Railway sandbox and runs the runner inside it.
+    // Resolve from the request, falling back to the project's saved mode.
+    const executionMode = body.executionMode ?? (project.executionMode as 'local' | 'sandbox' | null) ?? 'local';
+    if (executionMode !== project.executionMode) {
+      await db.update(projects).set({ executionMode }).where(eq(projects.id, id));
+    }
+
+    if (executionMode === 'sandbox') {
+      console.log('[build-route] Sandbox mode - provisioning Railway sandbox runner...');
+      // Surface provisioning to the UI via the project status stream.
+      projectEvents.emitProjectUpdate(id, { ...project, sandboxStatus: 'provisioning' });
+      try {
+        const { runnerId: sandboxRunner } = await ensureSandboxRunner(project);
+        runnerId = sandboxRunner; // override; the sandbox runner is now connected
+        console.log('[build-route] ✓ Sandbox runner connected:', runnerId);
+      } catch (sandboxError) {
+        console.error('[build-route] Sandbox provisioning failed:', sandboxError);
+        return new Response(
+          JSON.stringify({
+            error: 'Failed to provision sandbox',
+            details: sandboxError instanceof Error ? sandboxError.message : 'Unknown error',
+          }),
+          { status: 502, headers: { 'Content-Type': 'application/json' } }
+        );
       }
     }
 
@@ -199,19 +201,6 @@ export async function POST(
     // CAPTURE BUILD START METRICS
     // ============================================================
     // Track framework and model actually used (not just what was selected)
-    const frameworkTag = body.tags?.find(t => t.key === 'framework');
-    Sentry.metrics.count('build.started', 1, {
-      attributes: {
-        project_id: id,
-        model: agentId === 'claude-code' ? claudeModel : agentId,
-        framework: templateMetadata?.framework || 'unknown',
-        runner: runnerId,
-        operation_type: body.operationType || 'initial-build',
-        framework_detection_method: frameworkTag ? 'tag' : 'ai-analysis',
-        has_framework_tag: String(!!frameworkTag),
-      }
-    });
-
     const encoder = new TextEncoder();
 
     // User message already saved by frontend via TanStack DB
@@ -578,9 +567,7 @@ export async function POST(
             headers: { 'Content-Type': 'application/json' },
           });
         }
-      }
-    ); // close startSpan
-  }); // close withIsolationScope
+  })();
 }
 
 function normalizeSSEChunk(chunk: string): string | null {

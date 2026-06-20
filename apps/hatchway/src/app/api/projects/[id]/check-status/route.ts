@@ -3,6 +3,7 @@ import { db } from '@hatchway/agent-core/lib/db/client';
 import { projects, serverOperations } from '@hatchway/agent-core/lib/db/schema';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { projectEvents } from '@/lib/project-events';
+import { requireProjectOwnership, handleAuthError } from '@/lib/auth-helpers';
 
 // Timeout thresholds
 const STARTING_TIMEOUT_MS = 60000; // 60 seconds for starting state
@@ -27,15 +28,8 @@ export async function GET(
   try {
     const { id } = await params;
 
-    // Get project with status timestamp
-    const [project] = await db.select()
-      .from(projects)
-      .where(eq(projects.id, id))
-      .limit(1);
-
-    if (!project) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-    }
+    // Verify user owns this project
+    const { project } = await requireProjectOwnership(id);
 
     const now = new Date();
     const statusUpdatedAt = project.devServerStatusUpdatedAt || project.updatedAt;
@@ -119,6 +113,9 @@ export async function GET(
     });
 
   } catch (error) {
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+
     console.error('Error checking project status:', error);
     return NextResponse.json(
       { error: 'Failed to check status', details: error instanceof Error ? error.message : 'Unknown error' },

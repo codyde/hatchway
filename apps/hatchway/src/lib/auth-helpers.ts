@@ -4,6 +4,7 @@ import { db } from "@hatchway/agent-core";
 import { projects, runnerKeys, users, sessions } from "@hatchway/agent-core/lib/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { createHash } from "crypto";
+import { timingSafeEqualString } from "@hatchway/agent-core/lib/timing-safe-equal";
 
 // Local mode user - used when HATCHWAY_LOCAL_MODE is true
 export const LOCAL_USER = {
@@ -138,6 +139,22 @@ export async function getUserId(): Promise<string | null> {
 }
 
 /**
+ * The single source of truth for "may this user access this project".
+ * In local mode, everything is allowed. Projects without an owner (legacy
+ * rows) are accessible to any authenticated user; otherwise the owner must
+ * match. Used by both the HTTP routes (requireProjectOwnership) and the
+ * WebSocket auth path so the two can never diverge.
+ */
+export function isProjectAccessibleBy(
+  project: { userId: string | null },
+  userId: string
+): boolean {
+  if (isLocalMode()) return true;
+  if (!project.userId) return true; // legacy null-owner row
+  return project.userId === userId;
+}
+
+/**
  * Verify that the current user owns the project
  * In local mode, always returns the project (no ownership check)
  * For projects without userId (legacy), allows access if user is authenticated
@@ -154,18 +171,7 @@ export async function requireProjectOwnership(projectId: string) {
     throw new AuthError("Project not found", 404);
   }
 
-  // Local mode - allow access to all projects
-  if (isLocalMode()) {
-    return { project, session };
-  }
-
-  // Project has no owner (legacy) - allow authenticated users
-  if (!project.userId) {
-    return { project, session };
-  }
-
-  // Check ownership
-  if (project.userId !== userId) {
+  if (!isProjectAccessibleBy(project, userId)) {
     throw new AuthError("Forbidden", 403);
   }
 
@@ -308,11 +314,48 @@ export async function authenticateRunnerRequest(request: Request): Promise<boole
 
   // Fall back to shared secret check
   const sharedSecret = process.env.RUNNER_SHARED_SECRET;
-  if (sharedSecret && token === sharedSecret) {
+  if (sharedSecret && timingSafeEqualString(token, sharedSecret)) {
     return true;
   }
 
   return false;
+}
+
+/**
+ * Gate operational/maintenance endpoints (cleanup, reconcile, processes).
+ * These expose or mutate cross-tenant state, so a user session is NOT enough.
+ * Allowed when:
+ * - running in local mode, or
+ * - the request carries a Bearer token matching OPS_SECRET (for cron/automation)
+ *
+ * NOTE for operators: in hosted mode these endpoints are fail-closed. If
+ * OPS_SECRET is unset, they return 401 for everyone (including any cron that
+ * previously called them unauthenticated). Set OPS_SECRET and send it as
+ * `Authorization: Bearer <OPS_SECRET>` to re-enable automated cleanup.
+ */
+export async function requireOperationalAccess(request: Request): Promise<void> {
+  if (isLocalMode()) {
+    return;
+  }
+
+  const opsSecret = process.env.OPS_SECRET;
+  if (!opsSecret) {
+    console.warn(
+      "[auth] Operational endpoint blocked: OPS_SECRET is not set. " +
+      "Set OPS_SECRET to allow authenticated cron/ops access."
+    );
+  }
+  const authHeader = request.headers.get("Authorization");
+  if (opsSecret && authHeader) {
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.substring(7)
+      : authHeader;
+    if (timingSafeEqualString(token, opsSecret)) {
+      return;
+    }
+  }
+
+  throw new AuthError("Unauthorized", 401);
 }
 
 /**

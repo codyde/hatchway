@@ -9,9 +9,8 @@ import { buildWebSocketServer } from '@hatchway/agent-core/lib/websocket/server'
 import { appendRunnerLog, markRunnerLogExit } from '@hatchway/agent-core/lib/runner/log-store';
 import { sendCommandToRunner } from '@hatchway/agent-core/lib/runner/broker-state';
 import { getProjectRunnerId } from '@/lib/runner-utils';
+import { checkpointProject } from '@/lib/sandbox/manager';
 import { projectEvents } from '@/lib/project-events';
-import * as Sentry from '@sentry/nextjs';
-// import { metrics } from '@sentry/core';
 import {
   releasePortForProject,
   reserveOrReallocatePort,
@@ -128,20 +127,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Forbidden: You do not own this project' }, { status: 403 });
     }
 
-    // Note: Sentry's automatic HTTP instrumentation already created a span for this request
-    // and automatically continued the trace from the sentry-trace/baggage headers
-    // We just add a child span for the event processing
-    await Sentry.startSpan(
-      {
-        name: `api.runner.events.process.${event.type}`,
-        op: 'event.process',
-        attributes: {
-          'event.type': event.type,
-          'projectId': projectId,
-          'event.commandId': event.commandId,
-        },
-      },
-      async () => {
+    await (async () => {
         // Publish to WebSocket subscribers
         publishRunnerEvent(event);
 
@@ -261,15 +247,6 @@ export async function POST(request: Request) {
 
                       await sendCommandToRunner(runnerId, retryCommand);
                       console.log(`[events] ✅ Retry command sent for project ${projectId} on new port ${portInfo.port}`);
-
-                      Sentry.metrics.count('dev_server_port_conflict_retry', 1, {
-                        attributes: {
-                          project_id: projectId,
-                          old_port: (event.port ?? 'unknown').toString(),
-                          new_port: String(portInfo.port),
-                          attempt: String(currentAttempts + 1),
-                        },
-                      });
                     } else {
                       console.log(`[events] ⚠️ No runner available for port conflict retry`);
                       throw new Error('No runner available');
@@ -328,12 +305,6 @@ export async function POST(request: Request) {
                 }
               }
 
-              Sentry.metrics.count('dev_server_port_conflict', 1, {
-                attributes: {
-                  project_id: projectId,
-                  port: (event.port ?? 'unknown').toString(),
-                },
-              });
             }
             break;
           }
@@ -361,14 +332,6 @@ export async function POST(request: Request) {
                 
                 // Reset port retry counter since we successfully got a new port
                 portRetryAttempts.delete(projectId);
-                
-                Sentry.metrics.count('dev_server_port_reallocated', 1, {
-                  attributes: {
-                    project_id: projectId,
-                    original_port: String(reallocatedEvent.originalPort ?? 'unknown'),
-                    new_port: String(reallocatedEvent.newPort),
-                  },
-                });
               }
             }
             break;
@@ -569,13 +532,6 @@ IMPORTANT:
                   try {
                     await sendCommandToRunner(runnerId, buildCommand);
                     console.log(`[events] ✅ Auto-fix build triggered for startup crash in project ${projectId}`);
-
-                    Sentry.metrics.count('startup_crash_autofix_triggered', 1, {
-                      attributes: {
-                        project_id: projectId,
-                        attempt: String((attempts?.count || 0) + 1),
-                      },
-                    });
                   } catch (sendError) {
                     console.error(`[events] ❌ Failed to send auto-fix command to runner:`, sendError);
                   }
@@ -666,6 +622,16 @@ IMPORTANT:
             if (updated) {
               emitProjectUpdateFromData(projectId, updated);
 
+              // Sandbox mode: snapshot the workspace as a durable restore point
+              // after the build. Fire-and-forget — the snapshot flush can take a
+              // while and shouldn't block the runner's event POST; the long-lived
+              // server process finishes it. checkpointProject is best-effort.
+              if (updated.executionMode === 'sandbox' && updated.sandboxId) {
+                checkpointProject(updated).catch((err) =>
+                  console.error('[events] sandbox checkpoint after build failed:', err),
+                );
+              }
+
               // Track project completion with key tags
               const completionAttributes: Record<string, string> = {
                 project_id: updated.id,
@@ -692,11 +658,6 @@ IMPORTANT:
                 completionAttributes.framework_source = 'tag'; // Track that this came from a tag
               }
               
-              // completionAttributes: { project_id: '123', model: 'claude-sonnet-4-6', framework: 'next', framework_source: 'tag', brand: 'sentry' }
-              Sentry.metrics.count('project.completed', 1, {
-                attributes: completionAttributes
-              });
-
               // ============================================================
               // AUTO-START DEV SERVER AFTER BUILD COMPLETION
               // Only start if server is NOT already running (avoid restarting on follow-up builds)
@@ -758,13 +719,6 @@ IMPORTANT:
 
                     await sendCommandToRunner(runnerId, startCommand);
                     console.log(`[events] ✅ Auto-start command sent for project ${updated.id} on port ${portInfo.port}`);
-
-                    Sentry.metrics.count('dev_server_auto_start', 1, {
-                      attributes: {
-                        project_id: updated.id,
-                        port: String(portInfo.port),
-                      },
-                    });
                   } else {
                     console.log(`[events] ⚠️ No runner available for auto-start`);
                   }
@@ -943,13 +897,6 @@ IMPORTANT:
                 try {
                   await sendCommandToRunner(runnerId, buildCommand);
                   console.log(`[events] ✅ Auto-fix build triggered for project ${projectId}`);
-
-                  Sentry.metrics.count('dev_server_error_autofix_triggered', 1, {
-                    attributes: {
-                      project_id: projectId,
-                      attempt: String((attempts?.count || 0) + 1),
-                    },
-                  });
                 } catch (sendError) {
                   console.error(`[events] ❌ Failed to send auto-fix command to runner:`, sendError);
                 }
@@ -962,8 +909,7 @@ IMPORTANT:
           default:
             break;
         }
-      }
-    );
+    })();
 
     return NextResponse.json({ ok: true });
   } catch (error) {

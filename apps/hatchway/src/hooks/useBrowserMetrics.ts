@@ -2,7 +2,6 @@
 'use client';
 
 import { useEffect } from 'react';
-import * as Sentry from '@sentry/nextjs';
 
 export function useBrowserMetrics() {
   useEffect(() => {
@@ -153,17 +152,7 @@ export function useBrowserMetrics() {
           dnt: (navigator.doNotTrack || 'unknown').toString(),
         };
         
-        // Send metric to Sentry
-        console.log('[Browser Metrics] About to send metric to Sentry...');
-        console.log('[Browser Metrics] Sentry.metrics available:', typeof Sentry.metrics !== 'undefined');
-        console.log('[Browser Metrics] Metric attributes:', metrics);
-        
-        Sentry.metrics.count('page.loaded', 1, {
-          attributes: metrics
-        });
-        
-        console.log('[Browser Metrics] ✅ Metric sent successfully!');
-        console.log('[Browser Metrics] Full metric data:', metrics);
+        console.log('[Browser Metrics] Collected metrics:', metrics);
       } catch (error) {
         console.error('[Browser Metrics] ❌ Failed to send metric:', error);
         console.error('[Browser Metrics] Error details:', {

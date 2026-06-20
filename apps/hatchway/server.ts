@@ -28,6 +28,9 @@ import { projects } from '@hatchway/agent-core/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { projectEvents } from './src/lib/project-events';
 import { enrichProjectWithRunnerStatus } from './src/lib/runner-utils';
+import { getAuth } from './src/lib/auth';
+import { isProjectAccessibleBy } from './src/lib/auth-helpers';
+import { fromNodeHeaders } from 'better-auth/node';
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || 'localhost';
@@ -75,10 +78,48 @@ app.prepare().then(() => {
   // This sets up both /ws (frontend) and /ws/runner (runner) WebSocket servers
   buildWebSocketServer.initialize(server, '/ws');
 
+  // Authenticate frontend WebSocket clients. Upgrade requests bypass Next.js
+  // middleware, so the better-auth session must be validated here.
+  buildWebSocketServer.setClientAuth(
+    async (req) => {
+      try {
+        const session = await getAuth().api.getSession({
+          headers: fromNodeHeaders(req.headers),
+        });
+        return session?.user?.id ? { userId: session.user.id } : null;
+      } catch (error) {
+        console.error('[server] WebSocket session validation failed:', error);
+        return null;
+      }
+    },
+    async (userId, projectId) => {
+      const rows = await db
+        .select({ userId: projects.userId })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      if (rows.length === 0) return false;
+      // Shared ownership rule - same as the HTTP API's requireProjectOwnership
+      return isProjectAccessibleBy(rows[0], userId);
+    }
+  );
+
   // Register callback for runner status changes to update UI in real-time
   onRunnerStatusChange(async (runnerId, connected, affectedProjectIds) => {
     console.log(`[server] Runner ${runnerId} ${connected ? 'connected' : 'disconnected'}, notifying ${affectedProjectIds.length} projects`);
-    
+
+    // When a sandbox runner disconnects, the sandbox is gone (crashed or idle-reaped);
+    // reflect that in the project's sandboxStatus so the UI doesn't show it running.
+    if (!connected && runnerId.startsWith('sandbox-') && affectedProjectIds.length > 0) {
+      try {
+        await db.update(projects)
+          .set({ sandboxStatus: 'stopped' })
+          .where(eq(projects.runnerId, runnerId));
+      } catch (error) {
+        console.error(`[server] Failed to mark sandbox stopped for ${runnerId}:`, error);
+      }
+    }
+
     // Emit project events for each affected project so SSE clients get updated
     for (const projectId of affectedProjectIds) {
       try {
@@ -88,7 +129,7 @@ app.prepare().then(() => {
           .from(projects)
           .where(eq(projects.id, projectId))
           .limit(1);
-        
+
         if (projectData.length > 0) {
           // Enrich with runner status and emit
           const enrichedProject = await enrichProjectWithRunnerStatus(projectData[0]);

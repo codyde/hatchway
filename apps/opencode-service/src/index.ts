@@ -13,22 +13,14 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
 import { createOpencode } from '@opencode-ai/sdk';
-import * as Sentry from '@sentry/node';
 import { authenticateRequest, isLocalMode } from './auth.js';
 
 // Configuration
 const PORT = parseInt(process.env.OPENCODE_SERVICE_PORT || '4096', 10);
 const INTERNAL_PORT = parseInt(process.env.OPENCODE_INTERNAL_PORT || '4097', 10);
-const HOST = process.env.OPENCODE_SERVICE_HOST || '0.0.0.0';
-
-// Initialize Sentry if configured
-if (process.env.SENTRY_DSN) {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV || 'development',
-    tracesSampleRate: 0.1,
-  });
-}
+// Local mode disables auth, so never expose the service beyond loopback in that case
+const HOST = process.env.OPENCODE_SERVICE_HOST
+  || (process.env.HATCHWAY_LOCAL_MODE === 'true' ? '127.0.0.1' : '0.0.0.0');
 
 async function main() {
   console.log('[opencode-service] Starting OpenCode service...');
@@ -117,10 +109,13 @@ async function main() {
   });
 
   // Proxy all other requests to OpenCode
+  // NOTE: `ws` is intentionally disabled. WebSocket upgrade requests bypass the
+  // Express middleware chain (including the auth middleware above), which would
+  // expose an unauthenticated path into the bash-enabled OpenCode server.
+  // SSE is plain HTTP and does not need upgrade handling.
   const proxy = createProxyMiddleware({
     target: `http://127.0.0.1:${INTERNAL_PORT}`,
     changeOrigin: true,
-    ws: true, // Enable WebSocket proxying for SSE
     on: {
       proxyReq: fixRequestBody,
       error: (err, _req, res) => {
@@ -141,6 +136,13 @@ async function main() {
   const server = app.listen(PORT, HOST, () => {
     console.log(`[opencode-service] Service listening on http://${HOST}:${PORT}`);
     console.log('[opencode-service] Ready to accept requests');
+  });
+
+  // Explicitly reject WebSocket upgrade attempts - they cannot be authenticated
+  // by the Express middleware chain
+  server.on('upgrade', (_req, socket) => {
+    socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+    socket.destroy();
   });
 
   // Graceful shutdown
@@ -170,6 +172,5 @@ async function main() {
 // Run
 main().catch((error) => {
   console.error('[opencode-service] Fatal error:', error);
-  Sentry.captureException(error);
   process.exit(1);
 });

@@ -60,12 +60,12 @@ export const TAG_DEFINITIONS: TagDefinition[] = [
         sdk: 'agent'
       },
       {
-        value: 'claude-opus-4-6',
-        label: 'Claude Opus 4.6',
+        value: 'claude-opus-4-8',
+        label: 'Claude Opus 4.8',
         description: 'Anthropic Claude - Most capable for complex tasks',
         logo: '/claude.png',
         provider: 'claude-code',
-        model: 'claude-opus-4-6',
+        model: 'claude-opus-4-8',
         sdk: 'agent'
       },
       {
@@ -89,10 +89,10 @@ export const TAG_DEFINITIONS: TagDefinition[] = [
       {
         value: 'factory-droid-opus',
         label: 'Factory Droid (Opus)',
-        description: 'Factory Droid SDK with Claude Opus 4.6',
+        description: 'Factory Droid SDK with Claude Opus 4.8',
         logo: '/factory.svg',
         provider: 'factory-droid',
-        model: 'claude-opus-4-6-20251101',
+        model: 'claude-opus-4-8',
         sdk: 'droid'
       },
       {

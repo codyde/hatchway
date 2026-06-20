@@ -106,7 +106,7 @@ export interface StartBuildCommand extends BaseCommand {
     regenerate?: boolean;
     agent?: AgentId;
     claudeModel?: ClaudeModelId;
-    droidModel?: string; // Model ID for factory-droid agent (e.g., 'claude-opus-4-6-20251101', 'gpt-5.2-codex', 'glm-4.7')
+    droidModel?: string; // Model ID for factory-droid agent (e.g., 'claude-opus-4-8', 'gpt-5.2-codex', 'glm-4.7')
     codexThreadId?: string; // For resuming Codex threads
     messageParts?: Array<{
       type: string;

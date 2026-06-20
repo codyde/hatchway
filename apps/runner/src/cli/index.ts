@@ -34,34 +34,6 @@ function findPackageRoot(startDir: string): string {
 
 const packageRoot = findPackageRoot(__dirname);
 
-// Check if running in development mode (linked via pnpm/npm link)
-// Skip vendor install if we're in the monorepo - dependencies are handled by pnpm
-const isLinkedDevelopment = packageRoot.includes('/hatchway/apps/runner');
-
-// Only run vendor install for production global installs
-if (!isLinkedDevelopment) {
-  // Check if Sentry packages are missing and extract from vendor if needed
-  // (agent-core is bundled by tsup, but Sentry packages come from vendor tarballs)
-  const nodeModulesDir = dirname(packageRoot); // Go up from package to node_modules/@hatchway
-  const sentryNodePath = join(nodeModulesDir, "..", "@sentry", "node");
-
-  if (!existsSync(sentryNodePath)) {
-    // Silently initialize vendor packages in background
-    try {
-      const installScript = join(packageRoot, "scripts/install-vendor.js");
-      execFileSync("node", [installScript], {
-        cwd: packageRoot,
-        stdio: "pipe" // Silent mode - output only shown if VERBOSE=1
-      });
-    } catch (error) {
-      console.error("Failed to initialize vendor packages:", error);
-      process.exit(1);
-    }
-  }
-}
-
-// Sentry instrumentation is loaded via --import flag in bin/hatchway.js wrapper
-// This ensures instrumentation happens before any ESM module resolution
 
 import { Command } from 'commander';
 import { displayBanner } from './utils/banner.js';

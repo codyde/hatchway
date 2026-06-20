@@ -1,12 +1,26 @@
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, rm } from 'node:fs/promises';
 import type { Template } from './config';
 import { join } from 'node:path';
 import { getWorkspaceRoot } from '../workspace';
+import { assertValidProjectSlug } from '../path-safety';
 
-const execAsync = promisify(exec);
+// execFile (not exec): arguments are passed directly to the binary without
+// shell parsing, so user/LLM-derived values cannot inject commands
+const execFileAsync = promisify(execFile);
+
+function assertValidTemplateSource(template: Template): void {
+  if (!/^github:[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(template.repository)) {
+    throw new Error(`Invalid template repository: ${template.repository}`);
+  }
+  // Disallow a leading '-' so the branch can never be parsed as a git option
+  // when passed positionally to `git clone --branch <value>`.
+  if (!/^[A-Za-z0-9._\/-]+$/.test(template.branch) || template.branch.startsWith('-')) {
+    throw new Error(`Invalid template branch: ${template.branch}`);
+  }
+}
 
 /**
  * Download template from GitHub using degit
@@ -16,6 +30,9 @@ export async function downloadTemplate(
   template: Template,
   projectName: string
 ): Promise<string> {
+  // Project names may be LLM-derived from user prompts - validate before use in paths
+  assertValidProjectSlug(projectName);
+  assertValidTemplateSource(template);
   const targetPath = join(getWorkspaceRoot(), projectName);
 
   if (process.env.DEBUG_BUILD === '1') console.log(`📥 Downloading template: ${template.name}`);
@@ -36,10 +53,8 @@ export async function downloadTemplate(
 
   try {
     // Use npx degit (no install needed)
-    const command = `npx degit ${repoUrl} "${targetPath}"`;
-
-    if (process.env.DEBUG_BUILD === '1') console.log(`   Running: ${command}`);
-    const { stdout, stderr } = await execAsync(command, {
+    if (process.env.DEBUG_BUILD === '1') console.log(`   Running: npx degit ${repoUrl} ${targetPath}`);
+    const { stdout, stderr } = await execFileAsync('npx', ['degit', repoUrl, targetPath], {
       cwd: getWorkspaceRoot(),
     });
 
@@ -85,6 +100,9 @@ export async function downloadTemplateWithGit(
   template: Template,
   projectName: string
 ): Promise<string> {
+  // Project names may be LLM-derived from user prompts - validate before use in paths
+  assertValidProjectSlug(projectName);
+  assertValidTemplateSource(template);
   const targetPath = join(getWorkspaceRoot(), projectName);
 
   if (process.env.DEBUG_BUILD === '1') console.log(`📥 Cloning template with git: ${template.name}`);
@@ -93,22 +111,21 @@ export async function downloadTemplateWithGit(
   // "github:username/repo" → "https://github.com/username/repo.git"
   const repoUrl = template.repository.replace('github:', 'https://github.com/') + '.git';
 
-  // Shallow clone (depth 1, no history)
-  const command = `git clone --depth 1 --branch ${template.branch} "${repoUrl}" "${targetPath}"`;
-
-  if (process.env.DEBUG_BUILD === '1') console.log(`   Running: ${command}`);
+  if (process.env.DEBUG_BUILD === '1') console.log(`   Running: git clone --depth 1 --branch ${template.branch} ${repoUrl} ${targetPath}`);
 
   try {
-    const { stdout, stderr } = await execAsync(command, {
-      cwd: getWorkspaceRoot(),
-    });
+    const { stdout, stderr } = await execFileAsync(
+      'git',
+      ['clone', '--depth', '1', '--branch', template.branch, repoUrl, targetPath],
+      { cwd: getWorkspaceRoot() }
+    );
 
     if (stdout) console.log(`   ${stdout}`);
     if (stderr && !stderr.includes('Cloning')) console.log(`   ${stderr}`);
 
     // Remove .git directory (we don't need version history)
     try {
-      await execAsync(`rm -rf "${join(targetPath, '.git')}"`);
+      await rm(join(targetPath, '.git'), { recursive: true, force: true });
       if (process.env.DEBUG_BUILD === '1') console.log(`   Cleaned .git directory`);
     } catch {
       // Ignore errors cleaning .git
@@ -156,21 +173,30 @@ async function updatePackageName(projectPath: string, newName: string): Promise<
 export async function getProjectFileTree(projectPath: string): Promise<string> {
   try {
     // Try using tree command (if available)
-    const { stdout } = await execAsync(
-      `tree -L 3 -I 'node_modules|.git|.next|dist|build' "${projectPath}"`,
+    const { stdout } = await execFileAsync(
+      'tree',
+      ['-L', '3', '-I', 'node_modules|.git|.next|dist|build', projectPath],
       { maxBuffer: 1024 * 1024 }
     );
     return stdout;
   } catch {
     // Fallback: use find command
     try {
-      const { stdout } = await execAsync(
-        `find "${projectPath}" -type f -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/.next/*" -not -path "*/dist/*" | head -100`,
+      const { stdout } = await execFileAsync(
+        'find',
+        [
+          projectPath,
+          '-type', 'f',
+          '-not', '-path', '*/node_modules/*',
+          '-not', '-path', '*/.git/*',
+          '-not', '-path', '*/.next/*',
+          '-not', '-path', '*/dist/*',
+        ],
         { maxBuffer: 1024 * 1024 }
       );
 
       // Format as tree-like structure
-      const files = stdout.trim().split('\n');
+      const files = stdout.trim().split('\n').slice(0, 100);
       const basePath = projectPath.split('/').pop() || projectPath;
       let tree = `${basePath}/\n`;
 

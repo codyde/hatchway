@@ -47,5 +47,29 @@ if [ "$NODE_VERSION" -lt 20 ]; then
     exit 1
 fi
 
+# Pin the installer to a release tag instead of the mutable main branch, so a
+# compromised or broken main cannot reach users mid-install.
+# An explicit override (HATCHWAY_INSTALL_REF) lets advanced users pin a tag or
+# track main deliberately.
+if [ -n "$HATCHWAY_INSTALL_REF" ]; then
+    INSTALLER_REF="$HATCHWAY_INSTALL_REF"
+else
+    INSTALLER_REF=$(curl -fsSL --max-time 10 https://api.github.com/repos/codyde/hatchway/releases/latest 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+fi
+
+if [ -z "$INSTALLER_REF" ]; then
+    # Fail closed: do NOT silently fall back to mutable main (an attacker who can
+    # block api.github.com would otherwise reroute everyone to an unpinned ref).
+    echo ""
+    echo -e "${RED}✖ Could not resolve the latest Hatchway release tag${NC}"
+    echo ""
+    echo "  This can happen if api.github.com is unreachable or rate-limited."
+    echo "  Retry shortly, or pin a version explicitly:"
+    echo ""
+    echo -e "    ${CYAN}HATCHWAY_INSTALL_REF=v0.50.69 curl -fsSL https://hatchway.sh/install | bash${NC}"
+    echo ""
+    exit 1
+fi
+
 # Run the Node.js installer by piping to node stdin
-curl -fsSL https://raw.githubusercontent.com/codyde/hatchway/main/install.mjs | node --input-type=module -
+curl -fsSL "https://raw.githubusercontent.com/codyde/hatchway/${INSTALLER_REF}/install.mjs" | node --input-type=module -

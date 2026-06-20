@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
-import { db } from '@hatchway/agent-core/lib/db/client';
-import { projects } from '@hatchway/agent-core/lib/db/schema';
-import { eq } from 'drizzle-orm';
 import { sendCommandToRunner } from '@hatchway/agent-core/lib/runner/broker-state';
 import { addRunnerEventSubscriber } from '@hatchway/agent-core/lib/runner/event-stream';
 import { getProjectRunnerId } from '@/lib/runner-utils';
+import { requireProjectOwnership, handleAuthError } from '@/lib/auth-helpers';
+import { isSafeRelativePath } from '@hatchway/agent-core/lib/path-safety';
 import type { ReadFileCommand, WriteFileCommand, RunnerEvent } from '@/shared/runner/messages';
 import { randomUUID } from 'crypto';
 
@@ -25,13 +24,12 @@ export async function GET(
       return NextResponse.json({ error: 'Missing file path' }, { status: 400 });
     }
 
-    // Get project from database
-    const projectRows = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
-    if (!projectRows.length) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    if (!isSafeRelativePath(filePath)) {
+      return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
     }
 
-    const project = projectRows[0];
+    // Verify user owns this project
+    const { project } = await requireProjectOwnership(id);
     if (!project.slug) {
       return NextResponse.json({ error: 'Project slug not found' }, { status: 400 });
     }
@@ -89,6 +87,9 @@ export async function GET(
       size: result.size,
     });
   } catch (error) {
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+
     console.error('Failed to read file:', error);
     return NextResponse.json({
       error: error instanceof Error ? error.message : 'Failed to read file',
@@ -118,13 +119,12 @@ export async function PUT(
       return NextResponse.json({ error: 'File too large' }, { status: 413 });
     }
 
-    // Get project from database
-    const projectRows = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
-    if (!projectRows.length) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    if (!isSafeRelativePath(filePath)) {
+      return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
     }
 
-    const project = projectRows[0];
+    // Verify user owns this project
+    const { project } = await requireProjectOwnership(id);
     if (!project.slug) {
       return NextResponse.json({ error: 'Project slug not found' }, { status: 400 });
     }
@@ -180,6 +180,9 @@ export async function PUT(
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+
     console.error('Failed to write file:', error);
     return NextResponse.json({
       error: error instanceof Error ? error.message : 'Failed to write file',

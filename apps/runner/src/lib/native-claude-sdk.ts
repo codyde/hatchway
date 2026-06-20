@@ -15,7 +15,6 @@
  */
 
 import { query, type SDKMessage, type Options } from '@anthropic-ai/claude-agent-sdk';
-import * as Sentry from '@sentry/node';
 import { existsSync, mkdirSync } from 'node:fs';
 import { createProjectScopedPermissionHandler } from './permissions/project-scoped-handler.js';
 import { getPlatformPluginDir } from './skills.js';
@@ -177,12 +176,6 @@ function buildPromptWithImages(prompt: string, messageParts?: MessagePart[]): st
  *
  * With:
  * query() SDK function -> minimal transformation -> output
- * 
- * Sentry Integration:
- * - Manual gen_ai.* spans for AI Agent Monitoring in Sentry
- * - gen_ai.invoke_agent wraps the full query lifecycle
- * - gen_ai.execute_tool spans are emitted per tool call
- * - Token usage and cost are captured from the SDK result message
  */
 export function createNativeClaudeQuery(
   modelId: ClaudeModelId = DEFAULT_CLAUDE_MODEL_ID,
@@ -219,13 +212,6 @@ export function createNativeClaudeQuery(
     const platformPlugins = platformPluginDir
       ? [{ type: 'local' as const, path: platformPluginDir }]
       : [];
-
-    if (platformPlugins.length === 0) {
-      Sentry.logger.warn('Agent starting without platform skills — degraded capabilities', {
-        model: modelId,
-        workingDirectory,
-      });
-    }
 
     // Check for multi-modal content
     const hasImages = messageParts?.some(p => p.type === 'image');
@@ -294,31 +280,6 @@ export function createNativeClaudeQuery(
       { role: 'user', content: finalPrompt.substring(0, 1000) },
     ];
 
-    // Create the gen_ai.invoke_agent span as a child of the current active span.
-    //
-    // We use startInactiveSpan because this is an async generator — we can't use
-    // startSpan/startSpanManual (both require a callback, and yields can't cross
-    // callback boundaries). startInactiveSpan creates a span that inherits the
-    // parent from the current active span (build.runner, restored by engine.ts
-    // via Sentry.withActiveSpan).
-    //
-    // For tool spans, we use Sentry.withActiveSpan(agentSpan, ...) to temporarily
-    // make the agent span active so tool spans become its children.
-    const agentSpan = Sentry.startInactiveSpan({
-      op: 'gen_ai.invoke_agent',
-      name: 'invoke_agent hatchway-builder',
-      attributes: {
-        'gen_ai.operation.name': 'invoke_agent',
-        'gen_ai.agent.name': 'hatchway-builder',
-        'gen_ai.request.model': modelId,
-        'gen_ai.request.messages': JSON.stringify([{ role: 'user', content: finalPrompt.substring(0, 1000) }]),
-        'gen_ai.request.available_tools': JSON.stringify(
-          ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Task', 'TodoWrite', 'WebFetch']
-            .map(name => ({ name, type: 'function' }))
-        ),
-      },
-    });
-
     try {
       // Stream messages directly from the SDK
       for await (const sdkMessage of query({ prompt: finalPrompt, options })) {
@@ -335,74 +296,17 @@ export function createNativeClaudeQuery(
           if (transformed.type === 'assistant' && transformed.message?.content) {
             turnCount++;
 
-            // Collect response text and tool calls from this turn
-            const responseTexts: string[] = [];
-            const responseToolCalls: Array<{ name: string; type: string; arguments: string }> = [];
-
             for (const block of transformed.message.content) {
               if (block.type === 'tool_use') {
                 toolCallCount++;
                 debugLog(`[runner] [native-sdk] 🔧 Tool call: ${block.name}\n`);
-                responseToolCalls.push({
-                  name: block.name ?? 'unknown',
-                  type: 'function_call',
-                  arguments: JSON.stringify(block.input).substring(0, 500),
-                });
               } else if (block.type === 'text' && block.text) {
                 textBlockCount++;
-                responseTexts.push(block.text);
               }
             }
-
-            // Emit gen_ai.request span as a child of the agent span
-            Sentry.withActiveSpan(agentSpan, () => {
-              Sentry.startSpan(
-                {
-                  op: 'gen_ai.request',
-                  name: `request ${modelId}`,
-                  attributes: {
-                    'gen_ai.request.model': modelId,
-                    'gen_ai.operation.name': 'request',
-                    'gen_ai.request.messages': JSON.stringify(pendingRequestMessages),
-                    ...(responseTexts.length > 0
-                      ? { 'gen_ai.response.text': JSON.stringify(responseTexts.map(t => t.substring(0, 500))) }
-                      : {}),
-                    ...(responseToolCalls.length > 0
-                      ? { 'gen_ai.response.tool_calls': JSON.stringify(responseToolCalls) }
-                      : {}),
-                  },
-                },
-                () => {
-                  // Span marks the LLM request/response for this turn
-                }
-              );
-            });
 
             // Reset pending messages — the next turn's input will be tool results
             pendingRequestMessages = [];
-
-            // Emit gen_ai.execute_tool spans for each tool call in this turn
-            for (const block of transformed.message.content) {
-              if (block.type === 'tool_use') {
-                Sentry.withActiveSpan(agentSpan, () => {
-                  Sentry.startSpan(
-                    {
-                      op: 'gen_ai.execute_tool',
-                      name: `execute_tool ${block.name}`,
-                      attributes: {
-                        'gen_ai.tool.name': block.name,
-                        'gen_ai.tool.call_id': block.id,
-                        'gen_ai.tool.input': JSON.stringify(block.input).substring(0, 1000),
-                        'gen_ai.request.model': modelId,
-                      },
-                    },
-                    () => {
-                      // Span marks the tool invocation point
-                    }
-                  );
-                });
-              }
-            }
           }
 
           // --- Accumulate tool results for the next gen_ai.request span ---
@@ -440,32 +344,6 @@ export function createNativeClaudeQuery(
             process.stderr.write(`[native-sdk] SDK init — tools: ${toolCount} loaded\n`);
           }
 
-          // Set discovered skills on the agent span
-          if (agentSpan) {
-            agentSpan.setAttribute('gen_ai.agent.skills', discoveredSkills.join(', '));
-            agentSpan.setAttribute('gen_ai.agent.skill_count', discoveredSkills.length);
-          }
-
-          if (discoveredSkills.length > 0) {
-            Sentry.logger.info('SDK initialized with skills', {
-              skillCount: String(discoveredSkills.length),
-              skills: discoveredSkills.join(', '),
-              pluginCount: String(loadedPlugins.length),
-              plugins: loadedPlugins.map(p => p.name).join(', '),
-              toolCount: String(toolCount),
-              model: initMsg.model ?? modelId,
-              workingDirectory,
-            });
-          } else {
-            Sentry.logger.warn('SDK initialized but no skills discovered', {
-              pluginCount: String(loadedPlugins.length),
-              plugins: JSON.stringify(loadedPlugins),
-              toolCount: String(toolCount),
-              model: initMsg.model ?? modelId,
-              workingDirectory,
-              platformPluginDir: platformPluginDir ?? 'null',
-            });
-          }
         }
 
         // Capture tool_use_summary messages — these indicate skill content loading
@@ -493,33 +371,6 @@ export function createNativeClaudeQuery(
             duration_api_ms?: number;
           };
 
-          if (agentSpan) {
-            // Standard gen_ai token usage attributes (Sentry AI Agent Monitoring spec)
-            agentSpan.setAttribute('gen_ai.usage.input_tokens', resultMsg.usage?.input_tokens ?? 0);
-            agentSpan.setAttribute('gen_ai.usage.output_tokens', resultMsg.usage?.output_tokens ?? 0);
-            agentSpan.setAttribute('gen_ai.usage.total_tokens',
-              (resultMsg.usage?.input_tokens ?? 0) + (resultMsg.usage?.output_tokens ?? 0));
-            if (resultMsg.usage?.cache_read_input_tokens) {
-              agentSpan.setAttribute('gen_ai.usage.input_tokens.cached', resultMsg.usage.cache_read_input_tokens);
-            }
-            if (resultMsg.usage?.cache_creation_input_tokens) {
-              agentSpan.setAttribute('gen_ai.usage.input_tokens.cache_write', resultMsg.usage.cache_creation_input_tokens);
-            }
-
-            // Response text (truncated for span safety)
-            if (resultMsg.result) {
-              agentSpan.setAttribute('gen_ai.response.text', JSON.stringify(resultMsg.result.substring(0, 1000)));
-            }
-
-            // Custom (non-spec) attributes for operational insight
-            agentSpan.setAttribute('hatchway.cost_usd', resultMsg.total_cost_usd ?? 0);
-            agentSpan.setAttribute('hatchway.num_turns', resultMsg.num_turns ?? 0);
-            agentSpan.setAttribute('hatchway.num_tool_calls', toolCallCount);
-            agentSpan.setAttribute('hatchway.result', resultMsg.subtype ?? 'unknown');
-            agentSpan.setAttribute('hatchway.duration_ms', resultMsg.duration_ms ?? 0);
-            agentSpan.setAttribute('hatchway.duration_api_ms', resultMsg.duration_api_ms ?? 0);
-          }
-
           if (resultMsg.subtype === 'success') {
             debugLog(`[runner] [native-sdk] ✅ Query complete - ${resultMsg.num_turns} turns, $${resultMsg.total_cost_usd?.toFixed(4)} USD\n`);
           } else {
@@ -531,14 +382,7 @@ export function createNativeClaudeQuery(
       debugLog(`[runner] [native-sdk] 📊 Stream complete - ${messageCount} messages, ${toolCallCount} tool calls, ${textBlockCount} text blocks\n`);
     } catch (error) {
       debugLog(`[runner] [native-sdk] ❌ Error: ${error instanceof Error ? error.message : String(error)}\n`);
-      if (agentSpan) {
-        agentSpan.setStatus({ code: 2, message: error instanceof Error ? error.message : String(error) });
-      }
-      Sentry.captureException(error);
       throw error;
-    } finally {
-      // End the agent span regardless of success/failure
-      agentSpan?.end();
     }
   };
 }

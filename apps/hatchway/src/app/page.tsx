@@ -3,7 +3,6 @@
 import { Suspense, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import * as Sentry from "@sentry/nextjs";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
@@ -55,6 +54,8 @@ import {
 import { processCodexEvent } from "@hatchway/agent-core/lib/agents/codex/events";
 
 import { TagInput } from "@/components/tags/TagInput";
+import { ExecutionModeSelector } from "@/components/ExecutionModeSelector";
+import { useExecutionMode } from "@/contexts/ExecutionModeContext";
 import type { AppliedTag } from "@hatchway/agent-core/types/tags";
 import { parseModelTag } from "@hatchway/agent-core/lib/tags/model-parser";
 import { getClaudeModelLabel } from "@hatchway/agent-core/client";
@@ -644,6 +645,28 @@ function HomeContent() {
   const { projects, refetch, runnerOnline, setActiveProjectId } = useProjects();
   const { selectedRunnerId, availableRunners } = useRunner();
   const { selectedAgentId, selectedClaudeModelId, claudeModels } = useAgent();
+  const { executionMode, setExecutionMode } = useExecutionMode();
+
+  // Seed the execution-mode selector from the opened project's saved mode (per-project persistence)
+  useEffect(() => {
+    const mode = (currentProject as { executionMode?: string } | null | undefined)?.executionMode;
+    if (mode === 'local' || mode === 'sandbox') {
+      setExecutionMode(mode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProject?.id]);
+
+  // Persist an execution-mode change onto the current project (no-op on the landing page)
+  const persistExecutionMode = useCallback((mode: 'local' | 'sandbox') => {
+    const projectId = currentProject?.id;
+    if (!projectId) return;
+    fetch(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ executionMode: mode }),
+    }).catch((err) => console.error('[page] Failed to persist executionMode:', err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProject?.id]);
   const { addToast } = useToast();
   const selectedClaudeModel = claudeModels.find(
     (model) => model.id === selectedClaudeModelId,
@@ -1507,20 +1530,7 @@ function HomeContent() {
 
     console.log('🆔 [Build ID Sync] Using build ID:', existingBuildId, buildId ? '(passed)' : '(from ref)');
 
-    // Start a Sentry span for the entire build operation
-    // This creates the root trace that will be continued by the backend and runner
-    return await Sentry.startSpan(
-      {
-        name: `build.${operationType}`,
-        op: 'build.request',
-        attributes: {
-          'build.id': existingBuildId || 'unknown',
-          'build.operation_type': operationType,
-          'build.project_id': projectId,
-          'build.is_element_change': isElementChange,
-        },
-      },
-      async (span) => {
+    return await (async () => {
     try {
       // Derive agent and model from tags if present, otherwise use context
       const modelTag = appliedTags.find(t => t.key === 'model');
@@ -1546,6 +1556,7 @@ function HomeContent() {
           messageParts,
           buildId: existingBuildId,
           runnerId: effectiveRunnerId,
+          executionMode, // 'local' (default) or 'sandbox' (provisions a Railway sandbox runner)
           agent: effectiveAgent,
           claudeModel: effectiveClaudeModel,
           codexThreadId: generationStateRef.current?.codex?.threadId, // For Codex thread resumption
@@ -2160,8 +2171,6 @@ function HomeContent() {
       setTimeout(() => refetch(), 1000);
     } catch (error) {
       console.error("Generation error:", error);
-      // Set span status to error
-      span.setStatus({ code: 2, message: error instanceof Error ? error.message : 'Build failed' });
       // Mark generation as failed and SAVE
       updateGenerationState((prev) => {
         if (!prev) return null;
@@ -2182,8 +2191,7 @@ function HomeContent() {
       // Keep generationState visible - don't hide it!
       // User can manually dismiss with X button
     }
-      } // Close Sentry.startSpan callback
-    ); // Close Sentry.startSpan
+    })();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -2999,9 +3007,9 @@ function HomeContent() {
                         </button>
                       </div>
 
-                      {/* Tag Input - Only show when authenticated */}
+                      {/* Tag Input + execution mode - Only show when authenticated */}
                       {isAuthenticated && (
-                        <div className="mt-4 px-2">
+                        <div className="mt-4 px-2 flex items-center justify-between gap-3 flex-wrap">
                           <TagInput
                             tags={appliedTags}
                             onTagsChange={setAppliedTags}
@@ -3012,6 +3020,7 @@ function HomeContent() {
                             }))}
                             hasConnectedRunners={availableRunners.length > 0}
                           />
+                          <ExecutionModeSelector onChange={persistExecutionMode} />
                         </div>
                       )}
                       </form>
@@ -3434,6 +3443,9 @@ function HomeContent() {
                                 />
                               </svg>
                             </button>
+                          </div>
+                          <div className="mt-2 flex justify-end">
+                            <ExecutionModeSelector disabled={isLoading} onChange={persistExecutionMode} />
                           </div>
                         </form>
                       </div>

@@ -94,6 +94,34 @@ jobs:
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
+      # ============================================================
+      # QUALITY GATE - must pass BEFORE any version bump/tag/publish
+      # ============================================================
+
+      - name: Install dependencies
+        if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
+        run: pnpm install
+
+      - name: Quality gate - typecheck
+        if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
+        run: |
+          echo "Typechecking strict workspaces..."
+          pnpm --filter @hatchway/agent-core exec tsc --noEmit
+          pnpm --filter @hatchway/cli exec tsc --noEmit
+          pnpm --filter @hatchway/opencode-service exec tsc --noEmit
+
+      - name: Quality gate - build agent-core
+        if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
+        run: pnpm --filter @hatchway/agent-core build
+
+      - name: Quality gate - build CLI
+        if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
+        run: pnpm run build:cli
+
+      - name: Quality gate - build web app
+        if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
+        run: pnpm build
+
       - name: Determine version bump type
         id: bump_type
         if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
@@ -164,22 +192,12 @@ jobs:
           echo "✅ Created and pushed tag: $TAG"
 
       # ============================================================
-      # BUILD AND RELEASE STEPS (from release-cli.yml)
+      # BUILD AND RELEASE STEPS
+      # Dependencies were installed and the CLI + agent-core were built in the
+      # quality gate above. The version lives only in package.json (read at
+      # runtime, never embedded in dist), and `pnpm pack` reads the bumped
+      # package.json, so no rebuild is needed after the version bump.
       # ============================================================
-
-      - name: Install dependencies
-        if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
-        run: pnpm install
-
-      - name: Build agent-core
-        if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
-        run: |
-          echo "Building agent-core..."
-          pnpm --filter @hatchway/agent-core build
-
-      - name: Build CLI
-        if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
-        run: pnpm run build:cli
 
       - name: Prepare package.json for publishing
         if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'

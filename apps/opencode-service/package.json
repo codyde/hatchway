@@ -14,10 +14,9 @@
     "prepare": "pnpm run build"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "^1.0.0",
     "@hatchway/agent-core": "workspace:*",
-    "@sentry/node": "^10.37.0",
-    "drizzle-orm": "^0.43.1",
+    "@opencode-ai/sdk": "^1.17.8",
+    "drizzle-orm": "^0.45.2",
     "express": "^4.21.0",
     "http-proxy-middleware": "^3.0.0"
   },

@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import * as Sentry from '@sentry/node';
 import type { AgentId, ClaudeModelId } from '@hatchway/agent-core/types/agent';
 import { resolveAgentStrategy } from '@hatchway/agent-core/lib/agents';
 import { ensureProjectSkills } from '../skills.js';
@@ -107,13 +106,6 @@ export async function createBuildStream(options: BuildStreamOptions): Promise<Re
 
   debugLog('[runner] [build-engine] 📦 Creating ReadableStream from generator...\n');
 
-  // Capture the active Sentry span BEFORE creating the ReadableStream.
-  // The ReadableStream.start() callback runs in a new async context where the
-  // parent build.runner span is no longer active. We restore it with withActiveSpan()
-  // so that gen_ai.invoke_agent spans created inside the query generator are
-  // properly nested as children of the build.runner span.
-  const parentSpan = Sentry.getActiveSpan();
-
   // Create a ReadableStream from the AsyncGenerator
   const stream = new ReadableStream({
     async start(controller) {
@@ -147,12 +139,7 @@ export async function createBuildStream(options: BuildStreamOptions): Promise<Re
         }
       };
 
-      // Restore the parent span context so child spans nest correctly
-      if (parentSpan) {
-        await Sentry.withActiveSpan(parentSpan, consume);
-      } else {
-        await consume();
-      }
+      await consume();
     },
   });
 

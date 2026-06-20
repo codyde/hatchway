@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { db } from '@hatchway/agent-core/lib/db/client';
 import { projects } from '@hatchway/agent-core/lib/db/schema';
 import { eq } from 'drizzle-orm';
-import * as Sentry from '@sentry/nextjs';
 import { sendCommandToRunner } from '@hatchway/agent-core/lib/runner/broker-state';
 import { getProjectRunnerId, enrichProjectWithRunnerStatus } from '@/lib/runner-utils';
 import { randomUUID } from 'crypto';
@@ -50,7 +49,7 @@ export async function PATCH(
     const allowedFields = [
       'name', 'description', 'originalPrompt', 'icon', 'status', 'projectType', 'runCommand',
       'port', 'devServerPid', 'devServerPort', 'devServerStatus', 'runnerId', 'generationState',
-      'lastActivityAt', 'errorMessage'
+      'lastActivityAt', 'errorMessage', 'executionMode'
     ];
 
     const filteredUpdates = Object.keys(updates)
@@ -64,24 +63,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
-    // Wrap database update in span for tracing
-    const updated = await Sentry.startSpan(
-      {
-        name: `api.projects.update${filteredUpdates.generationState ? '.generationState' : ''}`,
-        op: 'db.update',
-        attributes: {
-          'project.id': id,
-          'update.fields': Object.keys(filteredUpdates).join(','),
-          'update.hasGenerationState': !!filteredUpdates.generationState,
-        },
-      },
-      async () => {
-        return await db.update(projects)
-          .set(filteredUpdates)
-          .where(eq(projects.id, id))
-          .returning();
-      }
-    );
+    const updated = await db.update(projects)
+      .set(filteredUpdates)
+      .where(eq(projects.id, id))
+      .returning();
 
     if (updated.length === 0) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
@@ -126,15 +111,6 @@ export async function DELETE(
 
     // Delete from database (cascade will delete messages and running_processes)
     await db.delete(projects).where(eq(projects.id, id));
-
-    // Instrument project deletion metric
-    Sentry.metrics.count('project_delete', 1, {
-      attributes: {
-        project_id: id,
-        delete_files: deleteFiles.toString(),
-        had_dev_server: (!!project.devServerPid).toString()
-      }
-    });
 
     // Optionally delete filesystem - delegate to runner
     let filesDeleted = false;

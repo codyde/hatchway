@@ -1,9 +1,7 @@
 import { NextRequest } from 'next/server';
-import { db } from '@hatchway/agent-core/lib/db/client';
-import { projects } from '@hatchway/agent-core/lib/db/schema';
-import { eq } from 'drizzle-orm';
 import { projectEvents } from '@/lib/project-events';
 import { enrichProjectWithRunnerStatus } from '@/lib/runner-utils';
+import { requireProjectOwnership, handleAuthError } from '@/lib/auth-helpers';
 
 const isVerboseSSELogging = process.env.HATCHWAY_DEBUG_SSE === '1';
 const debugLog = (...args: unknown[]) => {
@@ -11,7 +9,6 @@ const debugLog = (...args: unknown[]) => {
     console.log(...args);
   }
 };
-const loggedMissingProjects = new Set<string>();
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,6 +22,18 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Verify user owns this project before opening the stream. The ownership
+  // check already fetches the project row, so reuse it for the initial state
+  // instead of re-querying inside the stream.
+  let ownedProject: Awaited<ReturnType<typeof requireProjectOwnership>>['project'];
+  try {
+    ({ project: ownedProject } = await requireProjectOwnership(id));
+  } catch (error) {
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+    throw error;
+  }
 
   debugLog(`📡 SSE status stream requested for project: ${id}`);
 
@@ -71,29 +80,15 @@ export async function GET(
         const enqueueConnected = `data: ${JSON.stringify({ type: 'connected' })}\n\n`;
         safeEnqueue(controller, enqueueConnected);
 
-        // Send initial project state immediately
-        const initialProject = await db.select()
-          .from(projects)
-          .where(eq(projects.id, id))
-          .limit(1);
-
-        if (initialProject.length > 0) {
-          // Enrich with runner connection status
-          const enrichedProject = await enrichProjectWithRunnerStatus(initialProject[0]);
-          const data = `data: ${JSON.stringify({
-            type: 'status-update',
-            project: enrichedProject,
-          })}\n\n`;
-          safeEnqueue(controller, data);
-          debugLog(`✅ Sent initial status for ${id}`);
-        } else {
-          if (!loggedMissingProjects.has(id)) {
-            console.warn(`⚠️  Project ${id} not found`);
-            loggedMissingProjects.add(id);
-          }
-          safeClose(controller);
-          return;
-        }
+        // Send initial project state immediately, reusing the row already
+        // fetched by the ownership check above
+        const enrichedProject = await enrichProjectWithRunnerStatus(ownedProject);
+        const data = `data: ${JSON.stringify({
+          type: 'status-update',
+          project: enrichedProject,
+        })}\n\n`;
+        safeEnqueue(controller, data);
+        debugLog(`✅ Sent initial status for ${id}`);
 
         // Start keepalive pings every 15 seconds
         keepaliveInterval = setInterval(() => {

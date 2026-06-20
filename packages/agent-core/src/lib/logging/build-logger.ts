@@ -4,8 +4,6 @@
  * with correlation tracking and context-specific methods
  */
 
-import * as Sentry from '@sentry/node';
-
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type LogContext = 'runner' | 'orchestrator' | 'transformer' | 'codex-query' | 'claude-query' | 'build' | 'websocket' | 'port-allocator' | 'process-manager' | 'build-events';
 
@@ -86,26 +84,6 @@ class BuildLogger {
       logFn(`${icon} ${prefix} ${message}`, data);
     } else {
       logFn(`${icon} ${prefix} ${message}`);
-    }
-
-    // Send warn and error logs to Sentry as breadcrumbs for better debugging
-    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
-      try {
-        if (level === 'warn' || level === 'error') {
-          Sentry.addBreadcrumb({
-            category: `build-logger.${context}`,
-            message,
-            level: level === 'error' ? 'error' : 'warning',
-            data: {
-              ...data,
-              buildId: this.buildId,
-              projectId: this.projectId,
-            },
-          });
-        }
-      } catch {
-        // Silently fail if Sentry is not available - don't break logging
-      }
     }
   }
 
