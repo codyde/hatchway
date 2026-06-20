@@ -1,6 +1,6 @@
 {
   "name": "@hatchway/opencode-service",
-  "version": "0.50.69",
+  "version": "0.50.70",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
