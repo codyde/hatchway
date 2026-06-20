@@ -6,7 +6,6 @@ config({ path: '.env.local' });
 // This must be set before importing next
 process.env.__NEXT_BUNDLER = 'webpack';
 
-import './sentry.server.config';
 /**
  * Custom Next.js Server with WebSocket Support
  * 
