@@ -43,7 +43,7 @@
   "scripts": {
     "dev": "RUNNER_WS_URL=ws://localhost:3000/ws/runner RUNNER_SHARED_SECRET=${RUNNER_SHARED_SECRET:-dev-secret} tsx src/index.ts",
     "dev:cli": "tsx src/cli/index.ts",
-    "build": "rollup -c && cp templates.json dist/ && rm -rf dist/lib/skills/platform-plugin && mkdir -p dist/lib/skills && cp -R src/lib/skills/platform-plugin dist/lib/skills/platform-plugin",
+    "build": "rm -rf dist && rollup -c && cp templates.json dist/ && rm -rf dist/lib/skills/platform-plugin && mkdir -p dist/lib/skills && cp -R src/lib/skills/platform-plugin dist/lib/skills/platform-plugin",
     "build:tsc": "tsc -p tsconfig.json",
     "start": "RUNNER_WS_URL=ws://localhost:3000/ws/runner RUNNER_SHARED_SECRET=${RUNNER_SHARED_SECRET:-dev-secret} node dist/index.js",
     "cli": "node dist/cli/index.js"

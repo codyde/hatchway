@@ -34,7 +34,6 @@ const environmentId = requireEnv('RAILWAY_ENVIRONMENT_ID');
 const cliPackage = process.env.SANDBOX_CLI_PACKAGE || '@hatchway/cli@latest';
 const railgatePackage = process.env.SANDBOX_RAILGATE_PACKAGE || 'railgate@latest';
 const checkpointName = process.env.SANDBOX_BASE_CHECKPOINT || 'hatchway-base';
-const NODE_MAJOR = process.env.SANDBOX_NODE_MAJOR || '22';
 
 const opts = { token, environmentId };
 
@@ -52,14 +51,8 @@ async function main() {
   console.log(`Sandbox ${sb.id} (${sb.status})`);
 
   try {
-    await step(
-      sb,
-      `Install Node ${NODE_MAJOR} + curl`,
-      `apt-get update -qq && apt-get install -y -qq curl ca-certificates && ` +
-        `curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && ` +
-        `apt-get install -y -qq nodejs`,
-      600,
-    );
+    // The Railway sandbox base image ships Node via mise (on PATH already), so
+    // we don't install Node — just the global CLI + railgate the runner needs.
     await step(sb, `Install ${cliPackage} + ${railgatePackage}`, `npm i -g ${cliPackage} ${railgatePackage}`, 600);
     await step(
       sb,
