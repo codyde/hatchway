@@ -1,6 +1,6 @@
 {
   "name": "@hatchway/opencode-client",
-  "version": "0.50.71",
+  "version": "0.50.72",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
