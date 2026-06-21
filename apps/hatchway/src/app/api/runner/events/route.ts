@@ -714,11 +714,12 @@ IMPORTANT:
                         workingDirectory: updated.path,
                         env: portEnv,
                         preferredPort: portInfo.port,
+                        executionMode: (updated.executionMode as 'local' | 'sandbox' | null) ?? 'local',
                       },
                     };
 
                     await sendCommandToRunner(runnerId, startCommand);
-                    console.log(`[events] ✅ Auto-start command sent for project ${updated.id} on port ${portInfo.port}`);
+                    console.log(`[events] ✅ Auto-start command sent for project ${updated.id} on port ${portInfo.port} (${startCommand.payload.executionMode})`);
                   } else {
                     console.log(`[events] ⚠️ No runner available for auto-start`);
                   }

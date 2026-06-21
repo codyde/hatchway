@@ -1499,7 +1499,44 @@ export async function startRunner(options: RunnerOptions = {}) {
             workingDirectory,
             env = {},
             preferredPort,
+            executionMode = 'local',
           } = command.payload;
+
+          // Sandbox mode: ship the locally-built workspace to the backend-managed
+          // Railway sandbox and run it there (railgate preview), rather than
+          // starting a local dev server + tunnel.
+          if (executionMode === 'sandbox') {
+            const sandboxPort = preferredPort ?? 3000;
+            log(`📦 Sandbox mode: syncing workspace to backend sandbox (project ${command.projectId}, port ${sandboxPort})...`);
+            try {
+              const { syncToSandbox } = await import('./lib/sandbox-sync.js');
+              const { previewUrl } = await syncToSandbox({
+                apiBaseUrl,
+                sharedSecret: runnerSharedSecret,
+                projectId: command.projectId,
+                dir: workingDirectory,
+                port: sandboxPort,
+                runCommand: runCmd,
+              });
+              log(`✅ Sandbox preview live at ${previewUrl}`);
+              sendEvent({
+                type: "tunnel-created",
+                ...buildEventBase(command.projectId, command.id),
+                port: sandboxPort,
+                tunnelUrl: previewUrl,
+              });
+            } catch (syncErr) {
+              const message = syncErr instanceof Error ? syncErr.message : String(syncErr);
+              log(`❌ Sandbox sync failed: ${message}`);
+              sendEvent({
+                type: "error",
+                ...buildEventBase(command.projectId, command.id),
+                error: `Sandbox sync failed: ${message}`,
+                stack: syncErr instanceof Error ? syncErr.stack : undefined,
+              });
+            }
+            break;
+          }
 
           // Port is pre-allocated in the database by the API route
           // We use the port from the payload (which includes env vars with PORT set)

@@ -153,6 +153,12 @@ export interface StartDevServerCommand extends BaseCommand {
     env?: Record<string, string>;
     preferredPort?: number | null;
     framework?: string;
+    /**
+     * 'sandbox' → the runner ships the built workspace to the backend-managed
+     * Railway sandbox (POST /api/projects/[id]/sandbox/sync) and runs it there,
+     * instead of starting a local dev server + tunnel. Defaults to 'local'.
+     */
+    executionMode?: 'local' | 'sandbox';
   };
 }
 
