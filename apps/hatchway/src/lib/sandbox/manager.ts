@@ -138,7 +138,10 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
   const subdomain = await ensureSubdomain(project);
   const installCommand = options.installCommand || 'npm install';
   const runCommand = options.runCommand || 'npm run dev';
-  const relay = requireEnv('RAILGATE_RELAY_URL');
+  // railgate's client appends the control path itself (`relayUrl + /_tunnel/connect`),
+  // so RAILGATE_RELAY_URL must be the BASE relay URL. Strip a trailing control
+  // path if someone set the full URL, otherwise it doubles and the relay 502s.
+  const relay = requireEnv('RAILGATE_RELAY_URL').replace(/\/_tunnel\/connect\/?$/, '');
   const token = requireEnv('RAILGATE_TOKEN');
   const port = options.port;
 
