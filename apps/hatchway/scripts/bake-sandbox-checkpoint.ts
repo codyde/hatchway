@@ -31,7 +31,6 @@ function requireEnv(name: string): string {
 
 const token = requireEnv('RAILWAY_API_TOKEN');
 const environmentId = requireEnv('RAILWAY_ENVIRONMENT_ID');
-const cliPackage = process.env.SANDBOX_CLI_PACKAGE || '@hatchway/cli@latest';
 const railgatePackage = process.env.SANDBOX_RAILGATE_PACKAGE || 'railgate@latest';
 const checkpointName = process.env.SANDBOX_BASE_CHECKPOINT || 'hatchway-base';
 
@@ -51,15 +50,18 @@ async function main() {
   console.log(`Sandbox ${sb.id} (${sb.status})`);
 
   try {
-    // The Railway sandbox base image ships Node via mise (on PATH already), so
-    // we don't install Node — just the global CLI + railgate the runner needs.
-    await step(sb, `Install ${cliPackage} + ${railgatePackage}`, `npm i -g ${cliPackage} ${railgatePackage}`, 600);
+    // Railway's base image ships Node via mise. The sandbox is the RUN target,
+    // so it needs: railgate (preview tunnel), tmux (keep the dev server + tunnel
+    // alive across exec sessions), and pnpm (most templates). No @hatchway/cli —
+    // the runner + Claude Code run on the user's machine.
+    await step(sb, 'Install tmux', `apt-get update -qq && apt-get install -y -qq tmux`, 600);
     await step(
       sb,
-      'Verify tools',
-      `node --version && hatchway --version && railgate --version`,
-      60,
+      `Install ${railgatePackage} + pnpm`,
+      `npm i -g ${railgatePackage} && (corepack enable || npm i -g pnpm)`,
+      600,
     );
+    await step(sb, 'Verify tools', `node --version && railgate --version && tmux -V && pnpm --version`, 60);
 
     console.log(`\nCheckpointing as "${checkpointName}"...`);
     const cp = await sb.checkpoint(checkpointName);
