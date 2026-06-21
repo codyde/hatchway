@@ -700,14 +700,7 @@ function HomeContent() {
       setShowOnboarding(true);
       return;
     }
-
-    // Sandbox mode provisions its runner server-side — never nag to connect a
-    // local runner (and dismiss it if it's already open when the mode flips).
-    if (executionMode === 'sandbox') {
-      setShowOnboarding(false);
-      return;
-    }
-
+    
     // Don't show onboarding if auth/onboarding status is still loading
     // This prevents a race condition where hasCompletedOnboarding is false
     // simply because the API hasn't responded yet
@@ -728,7 +721,7 @@ function HomeContent() {
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [isMounted, isLocalMode, hasCompletedOnboarding, isAuthenticated, isAuthLoading, forceHostedOnboarding, executionMode]);
+  }, [isMounted, isLocalMode, hasCompletedOnboarding, isAuthenticated, isAuthLoading, forceHostedOnboarding]);
 
   // Load tags from existing project or initialize defaults for new project
   useEffect(() => {
@@ -736,14 +729,6 @@ function HomeContent() {
       // Load tags from existing project
       const loadedTags = deserializeTags(currentProject.tags as never);
       setAppliedTags(loadedTags);
-    } else if (!selectedProjectSlug && executionMode === 'sandbox' && appliedTags.length === 0) {
-      // Sandbox mode has no local runner — seed a model tag so the in-sandbox
-      // agent has a model (framework is left to the server-side analyzer unless
-      // the user picks one). No runner tag.
-      setAppliedTags([
-        { key: 'model', value: 'claude-haiku-4-5', appliedAt: new Date() },
-      ]);
-      if (DEBUG_PAGE) console.log('[page] ✓ Sandbox default tags set: model=claude-haiku-4-5');
     } else if (!selectedProjectSlug && availableRunners.length > 0 && appliedTags.length === 0) {
       // Set default tags ONLY if no tags are currently applied
       // This prevents overwriting user's tag selections when availableRunners updates
@@ -763,7 +748,7 @@ function HomeContent() {
       setAppliedTags(defaultTags);
       if (DEBUG_PAGE) console.log('[page] ✓ Default tags set: runner=%s, model=claude-haiku-4-5', defaultRunnerId);
     }
-  }, [currentProject, selectedProjectSlug, availableRunners, selectedRunnerId, appliedTags.length, executionMode]);
+  }, [currentProject, selectedProjectSlug, availableRunners, selectedRunnerId, appliedTags.length]);
 
   useEffect(() => {
     generationStateRef.current = generationState;
@@ -3035,7 +3020,6 @@ function HomeContent() {
                               description: `Runner: ${r.runnerId}`
                             }))}
                             hasConnectedRunners={availableRunners.length > 0}
-                            sandboxMode={executionMode === 'sandbox'}
                           />
                           <ExecutionModeSelector onChange={persistExecutionMode} />
                         </div>

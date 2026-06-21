@@ -31,8 +31,6 @@ interface TagInputProps {
   className?: string;
   /** Whether any runners are currently connected */
   hasConnectedRunners?: boolean;
-  /** Sandbox mode: no local runner needed — show the tag picker (not Connect Runner) and hide the runner tag */
-  sandboxMode?: boolean;
 }
 
 export function TagInput({
@@ -41,7 +39,6 @@ export function TagInput({
   runnerOptions,
   className = '',
   hasConnectedRunners = true,
-  sandboxMode = false,
 }: TagInputProps) {
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
   const [validationErrors, setValidationErrors] = React.useState<string[]>([]);
@@ -129,8 +126,8 @@ export function TagInput({
           />
         ))}
 
-        {/* Show Connect Runner button if no runners connected (never in sandbox mode) */}
-        {!hasConnectedRunners && !sandboxMode ? (
+        {/* Show Connect Runner button if no runners connected */}
+        {!hasConnectedRunners ? (
           <Button
             variant="outline"
             size="sm"
@@ -147,7 +144,6 @@ export function TagInput({
             onOpenChange={setDropdownOpen}
             onSelectTag={handleAddTag}
             runnerOptions={runnerOptions}
-            hideRunner={sandboxMode}
           >
             <Button
               variant="outline"

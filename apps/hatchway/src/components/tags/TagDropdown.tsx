@@ -22,8 +22,6 @@ interface TagDropdownProps {
   children: React.ReactNode;
   // If provided, opens directly to the options for this tag key (for replacement)
   existingTagKey?: string;
-  // Hide the runner tag (e.g. Sandbox mode, where there is no local runner)
-  hideRunner?: boolean;
 }
 
 type ViewState =
@@ -38,8 +36,7 @@ export function TagDropdown({
   onSelectTag,
   runnerOptions = [],
   children,
-  existingTagKey,
-  hideRunner = false
+  existingTagKey
 }: TagDropdownProps) {
   const { isLocalMode } = useAuth();
   
@@ -48,7 +45,7 @@ export function TagDropdown({
   // MUST be defined before getInitialView() to avoid TDZ error
   const getTagDefinitions = () => {
     return TAG_DEFINITIONS
-      .filter(def => !((isLocalMode || hideRunner) && def.key === 'runner')) // Hide runner tag in local/sandbox mode
+      .filter(def => !(isLocalMode && def.key === 'runner')) // Hide runner tag in local mode
       .map(def => {
         if (def.key === 'runner') {
           return { ...def, options: runnerOptions };
