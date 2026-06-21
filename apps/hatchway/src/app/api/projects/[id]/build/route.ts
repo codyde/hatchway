@@ -18,7 +18,6 @@ import { parseModelTag } from '@hatchway/agent-core/lib/tags/model-parser';
 import { TAG_DEFINITIONS } from '@hatchway/agent-core/config/tags';
 import { projectEvents } from '@/lib/project-events';
 import { requireProjectOwnership, AuthError } from '@/lib/auth-helpers';
-import { ensureSandboxRunner } from '@/lib/sandbox/manager';
 
 /**
  * NOTE: Template analysis and project name generation are now handled by the runner.
@@ -108,32 +107,14 @@ export async function POST(
       }
     }
 
-    // EXECUTION MODE: 'local' (default) uses the connected runner above;
-    // 'sandbox' provisions a Railway sandbox and runs the runner inside it.
-    // Resolve from the request, falling back to the project's saved mode.
+    // EXECUTION MODE: 'local' (default) and 'sandbox' both build on the
+    // connected local runner (local Claude Code, user's subscription). In
+    // 'sandbox' mode the runner then ships the built workspace to a
+    // backend-managed Railway sandbox via POST /api/projects/[id]/sandbox/sync
+    // (the run/preview target) — no runner override here.
     const executionMode = body.executionMode ?? (project.executionMode as 'local' | 'sandbox' | null) ?? 'local';
     if (executionMode !== project.executionMode) {
       await db.update(projects).set({ executionMode }).where(eq(projects.id, id));
-    }
-
-    if (executionMode === 'sandbox') {
-      console.log('[build-route] Sandbox mode - provisioning Railway sandbox runner...');
-      // Surface provisioning to the UI via the project status stream.
-      projectEvents.emitProjectUpdate(id, { ...project, sandboxStatus: 'provisioning' });
-      try {
-        const { runnerId: sandboxRunner } = await ensureSandboxRunner(project);
-        runnerId = sandboxRunner; // override; the sandbox runner is now connected
-        console.log('[build-route] ✓ Sandbox runner connected:', runnerId);
-      } catch (sandboxError) {
-        console.error('[build-route] Sandbox provisioning failed:', sandboxError);
-        return new Response(
-          JSON.stringify({
-            error: 'Failed to provision sandbox',
-            details: sandboxError instanceof Error ? sandboxError.message : 'Unknown error',
-          }),
-          { status: 502, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
     }
 
     console.log('[build-route] Using agent for build:', agentId);
