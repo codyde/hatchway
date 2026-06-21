@@ -16,7 +16,6 @@ import { sendCommandToRunner } from '@hatchway/agent-core/lib/runner/broker-stat
 import { addRunnerEventSubscriber, removeRunnerEventSubscriber } from '@hatchway/agent-core/lib/runner/event-stream';
 import type { RunnerEvent, AnalyzeProjectCommand, ProjectMetadataEvent } from '@hatchway/agent-core/shared/runner/messages';
 import { isLocalMode, getSession } from '@/lib/auth-helpers';
-import { analyzeProjectServerSide } from '@/lib/server-analyzer';
 import type { AppliedTag } from '@hatchway/agent-core/types/tags';
 import type { AgentId, ClaudeModelId } from '@hatchway/agent-core/types/agent';
 
@@ -26,7 +25,6 @@ interface AnalyzeRequestBody {
   claudeModel?: ClaudeModelId;
   tags?: AppliedTag[];
   runnerId?: string;
-  executionMode?: 'local' | 'sandbox';
 }
 
 interface AnalysisResult {
@@ -58,19 +56,10 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as AnalyzeRequestBody;
-    const { prompt, agent, claudeModel, tags, runnerId, executionMode } = body;
+    const { prompt, agent, claudeModel, tags, runnerId } = body;
 
     if (!prompt || !agent) {
       return NextResponse.json({ error: 'Missing required fields: prompt, agent' }, { status: 400 });
-    }
-
-    // Sandbox mode: no runner exists yet (the project hasn't been created), so
-    // run analysis on the server instead of dispatching to a runner.
-    if (executionMode === 'sandbox') {
-      console.log('[analyze] Sandbox mode - analyzing server-side (no runner)');
-      const result = await analyzeProjectServerSide({ prompt, claudeModel, tags });
-      console.log(`[analyze] Server-side analysis complete: ${result.friendlyName} (${result.slug})`);
-      return NextResponse.json({ analysis: result });
     }
 
     const effectiveRunnerId = runnerId ?? process.env.RUNNER_DEFAULT_ID ?? 'default';

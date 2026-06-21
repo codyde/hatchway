@@ -2239,7 +2239,6 @@ function HomeContent() {
             claudeModel: effectiveClaudeModel,
             tags: serializeTags(appliedTags),
             runnerId: selectedRunnerId,
-            executionMode, // 'sandbox' analyzes server-side (no runner needed)
           }),
         });
 

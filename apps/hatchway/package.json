@@ -15,7 +15,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "0.105.0",
     "@hatchway/agent-core": "workspace:*",
     "@hatchway/opencode-client": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
