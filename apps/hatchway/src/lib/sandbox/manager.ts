@@ -64,6 +64,11 @@ async function setSandbox(
   await db.update(projects).set({ ...fields, updatedAt: new Date() }).where(eq(projects.id, projectId));
 }
 
+/** Single-quote a string for safe use as one shell argument (POSIX). */
+function shQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
 async function execOk(sb: Sandbox, cmd: string, timeoutSec: number): Promise<string> {
   const r = await sb.exec(cmd, { timeoutSec });
   if (r.exitCode !== 0) {
@@ -133,35 +138,30 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
   const subdomain = await ensureSubdomain(project);
   const installCommand = options.installCommand || 'npm install';
   const runCommand = options.runCommand || 'npm run dev';
-
-  // 1. Land the tarball (written as base64 text, then decoded — avoids binary
-  //    transfer issues) and extract over a clean workspace.
-  await sandbox.files.write('/tmp/workspace.tgz.b64', options.tarballBase64);
-  await execOk(
-    sandbox,
-    `rm -rf ${WORKSPACE} && mkdir -p ${WORKSPACE} && base64 -d /tmp/workspace.tgz.b64 | tar xz -C ${WORKSPACE} && rm -f /tmp/workspace.tgz.b64`,
-    180,
-  );
-
-  // 2. Install dependencies in the box.
-  await execOk(sandbox, `cd ${WORKSPACE} && ${installCommand}`, 900);
-
-  // 3. (Re)start the dev server under tmux so it survives the exec session.
-  await execOk(
-    sandbox,
-    `tmux kill-session -t dev 2>/dev/null; cd ${WORKSPACE} && tmux new-session -d -s dev '${runCommand} > /tmp/dev.log 2>&1'`,
-    60,
-  );
-
-  // 4. (Re)start railgate pointed at the dev-server port with our stable subdomain.
   const relay = requireEnv('RAILGATE_RELAY_URL');
   const token = requireEnv('RAILGATE_TOKEN');
-  await execOk(
-    sandbox,
-    `tmux kill-session -t railgate 2>/dev/null; tmux new-session -d -s railgate ` +
-      `'railgate http ${options.port} -r ${relay} -t ${token} --subdomain ${subdomain} --force > /tmp/railgate.log 2>&1'`,
-    60,
-  );
+  const port = options.port;
+
+  // Land the tarball (base64 text → decoded; avoids binary-transfer issues).
+  await sandbox.files.write('/tmp/workspace.tgz.b64', options.tarballBase64);
+
+  // One script, run via a LOGIN shell (`bash -lc`) so the sandbox's mise setup
+  // is sourced and node/npm/pnpm/railgate are on PATH (a non-interactive exec
+  // shell doesn't get them). `tmux kill-server` first so the dev + railgate
+  // sessions start under a fresh server that inherits this mise-active env.
+  const script = [
+    'set -e',
+    `rm -rf ${WORKSPACE} && mkdir -p ${WORKSPACE}`,
+    `base64 -d /tmp/workspace.tgz.b64 | tar xz -C ${WORKSPACE}`,
+    'rm -f /tmp/workspace.tgz.b64',
+    `cd ${WORKSPACE}`,
+    installCommand,
+    'tmux kill-server 2>/dev/null || true',
+    `tmux new-session -d -s dev 'cd ${WORKSPACE} && PORT=${port} HOST=0.0.0.0 ${runCommand} > /tmp/dev.log 2>&1'`,
+    `tmux new-session -d -s railgate 'railgate http ${port} -r ${relay} -t ${token} --subdomain ${subdomain} --force > /tmp/railgate.log 2>&1'`,
+  ].join('\n');
+
+  await execOk(sandbox, `bash -lc ${shQuote(script)}`, 900);
 
   const baseDomain = process.env.RAILGATE_BASE_DOMAIN || 'portal.hatchway.sh';
   await setSandbox(project.id, { sandboxStatus: 'running' });
