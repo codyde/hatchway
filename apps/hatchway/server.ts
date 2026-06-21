@@ -1,3 +1,6 @@
+// MUST be first: polyfill globalThis.AsyncLocalStorage before any Next module loads.
+import './polyfill-als';
+
 // Load .env.local for local development (Railway injects env vars directly)
 import { config } from 'dotenv';
 config({ path: '.env.local' });
