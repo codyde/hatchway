@@ -13,6 +13,7 @@ import { projects } from '@hatchway/agent-core/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { authenticateRunnerRequest, isLocalMode } from '@/lib/auth-helpers';
 import { syncAndRun, checkpointProject } from '@/lib/sandbox/manager';
+import { projectEvents } from '@/lib/project-events';
 
 // Installing deps inside the box can take a while.
 export const maxDuration = 300;
@@ -74,6 +75,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         updatedAt: new Date(),
       })
       .where(eq(projects.id, id));
+
+    // Signal "up": push the completed + preview-ready state to the frontend live
+    // (build done, dev server running, preview URL) so the UI leaves the build
+    // animation and shows the preview without waiting on a poll/refresh.
+    const [updated] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
+    if (updated) projectEvents.emitProjectUpdate(id, updated);
 
     console.log(`[sandbox/sync] project ${id} live at ${result.previewUrl} (sandbox ${result.sandboxId})`);
 
