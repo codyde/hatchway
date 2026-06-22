@@ -32,6 +32,7 @@ import { useProjects, type Project } from "@/contexts/ProjectContext";
 import { useRunner } from "@/contexts/RunnerContext";
 import { useAgent } from "@/contexts/AgentContext";
 import { useProjectMessages, useProject } from "@/queries/projects";
+import { useRunnerStatus } from "@/queries/runner";
 import { useGitHubStatus } from "@/queries/github";
 import { useSaveMessage } from "@/mutations/messages";
 import { useQueryClient } from "@tanstack/react-query";
@@ -351,6 +352,16 @@ function HomeContent() {
 
   // Subscribe to single project query for SSE updates
   const { data: projectFromQuery } = useProject(currentProject?.id);
+
+  // Polled runner presence (every 10s, scoped to this user's runners). This is
+  // the self-healing source of truth for "is this project's runner connected".
+  // currentProject.runnerConnected is event-driven only (no poll), so a missed
+  // reconnect notification can leave it stuck false; reconcile against the poll.
+  const { data: runnerStatusData } = useRunnerStatus();
+  const projectRunnerLive = !!(
+    currentProject?.runnerId &&
+    runnerStatusData?.connections?.some((c) => c.runnerId === currentProject.runnerId)
+  );
   
   // GitHub status for auto-push feature
   const { data: githubStatus } = useGitHubStatus(currentProject?.id || '');
@@ -2881,8 +2892,11 @@ function HomeContent() {
           </div>
         )}
         
-        {/* Project's runner disconnected warning - also check runnerActive which tracks recent WebSocket events */}
-        {currentProject && currentProject.runnerId && !currentProject.runnerConnected && !runnerActive && (
+        {/* Project's runner disconnected warning. Gated on three signals so a
+            missed reconnect event can't leave it stuck: the event-driven
+            runnerConnected flag, recent build-WS activity (runnerActive), and
+            the 10s-polled runner presence list (projectRunnerLive). */}
+        {currentProject && currentProject.runnerId && !currentProject.runnerConnected && !runnerActive && !projectRunnerLive && (
           <div className="bg-orange-500/20 border border-orange-400/40 text-orange-200 px-4 py-2 text-sm flex items-center justify-between">
             <div className="flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
