@@ -10,6 +10,7 @@ import { appendRunnerLog, markRunnerLogExit } from '@hatchway/agent-core/lib/run
 import { sendCommandToRunner } from '@hatchway/agent-core/lib/runner/broker-state';
 import { getProjectRunnerId } from '@/lib/runner-utils';
 import { projectEvents } from '@/lib/project-events';
+import { SANDBOX_DEV_PORT } from '@/lib/sandbox/inject-proxy-source';
 import {
   releasePortForProject,
   reserveOrReallocatePort,
@@ -672,23 +673,35 @@ IMPORTANT:
                   const runnerId = await getProjectRunnerId(updated.runnerId);
 
                   if (runnerId) {
-                    // Allocate port with proper framework detection
-                    const isRemoteRunner = runnerId !== 'local';
-                    const portInfo = await reserveOrReallocatePort({
-                      projectId: updated.id,
-                      projectType: updated.projectType,
-                      runCommand: updated.runCommand,
-                      preferredPort: updated.devServerPort,
-                      detectedFramework: updated.detectedFramework,
-                    }, isRemoteRunner);
+                    // Sandbox previews each run on their own isolated host, so
+                    // ports can never collide — use a fixed port and skip the
+                    // local-runner allocation/conflict logic entirely. Local
+                    // mode still allocates a non-conflicting port on the host.
+                    let port: number;
+                    let framework: string;
+                    if (isSandboxMode) {
+                      port = SANDBOX_DEV_PORT;
+                      framework = (updated.detectedFramework as string | null) ?? 'node';
+                      console.log(`[events] 📍 Sandbox fixed port ${port} for auto-start`);
+                    } else {
+                      const isRemoteRunner = runnerId !== 'local';
+                      const portInfo = await reserveOrReallocatePort({
+                        projectId: updated.id,
+                        projectType: updated.projectType,
+                        runCommand: updated.runCommand,
+                        preferredPort: updated.devServerPort,
+                        detectedFramework: updated.detectedFramework,
+                      }, isRemoteRunner);
+                      port = portInfo.port;
+                      framework = portInfo.framework;
+                      console.log(`[events] 📍 Allocated port ${port} for auto-start`);
+                    }
 
-                    console.log(`[events] 📍 Allocated port ${portInfo.port} for auto-start`);
-
-                    // Update DB with allocated port
+                    // Update DB with the port
                     const [startingProject] = await db.update(projects)
                       .set({
                         devServerStatus: 'starting',
-                        devServerPort: portInfo.port,
+                        devServerPort: port,
                         errorMessage: null,
                         lastActivityAt: new Date(),
                       })
@@ -700,7 +713,7 @@ IMPORTANT:
                     }
 
                     // Build port environment variables
-                    const portEnv = buildEnvForFramework(portInfo.framework, portInfo.port);
+                    const portEnv = buildEnvForFramework(framework as Parameters<typeof buildEnvForFramework>[0], port);
                     const runCommand = getRunCommand(updated.runCommand);
 
                     // Send start command to runner
@@ -713,13 +726,13 @@ IMPORTANT:
                         runCommand,
                         workingDirectory: updated.path,
                         env: portEnv,
-                        preferredPort: portInfo.port,
+                        preferredPort: port,
                         executionMode: (updated.executionMode as 'local' | 'sandbox' | null) ?? 'local',
                       },
                     };
 
                     await sendCommandToRunner(runnerId, startCommand);
-                    console.log(`[events] ✅ Auto-start command sent for project ${updated.id} on port ${portInfo.port} (${startCommand.payload.executionMode})`);
+                    console.log(`[events] ✅ Auto-start command sent for project ${updated.id} on port ${port} (${startCommand.payload.executionMode})`);
                   } else {
                     console.log(`[events] ⚠️ No runner available for auto-start`);
                   }

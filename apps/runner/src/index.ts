@@ -151,8 +151,8 @@ const CODEX_MODEL = "gpt-5-codex";
 // apps actually run in the ephemeral Railway sandbox + railgate tunnel.
 const SANDBOX_BUILD_GUIDANCE = `## Runtime environment: Railway sandbox (IMPORTANT)
 This app is RUN and PREVIEWED inside an ephemeral Linux sandbox (NOT the user's machine), reached through a public HTTPS tunnel. Build it so it runs there:
-- Bind the dev server to host 0.0.0.0 and honor the PORT environment variable — never hard-code a port or bind only to localhost.
-- Vite: in vite.config, set \`server.host: true\`, \`server.allowedHosts: true\` (so the tunnel domain is accepted), and \`server.hmr.clientPort: 443\` so HMR works over HTTPS.
+- Do NOT pick, configure, or worry about the port. Each preview runs on its own isolated sandbox host (ports never collide) and the platform assigns and forces the dev-server port. Do not hard-code a port or set a fixed server.port.
+- The dev server must bind to all interfaces and accept the tunnel domain. Vite/Astro: in the config set \`server.host: true\` and \`server.allowedHosts: true\` (accept the tunnel domain), and \`server.hmr.clientPort: 443\` so HMR works over HTTPS.
 - Everything must run self-contained inside the sandbox; do not depend on services that only exist on the user's local machine.
 - Do NOT start a long-running dev server yourself — the platform starts it after the build. One-off commands (e.g. \`npm run build\`) to verify are fine.`;
 

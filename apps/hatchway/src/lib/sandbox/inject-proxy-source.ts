@@ -16,6 +16,14 @@
  * WebSocket upgrades (HMR) straight through.
  */
 
+/**
+ * Fixed dev-server port for sandbox previews. Each sandbox is its own isolated
+ * host, so ports can never collide across projects — we use one fixed port and
+ * skip the local-runner port allocation/conflict logic entirely. The dev server
+ * is forced onto this port via --port (Vite/Astro ignore the PORT env var).
+ */
+export const SANDBOX_DEV_PORT = 4321;
+
 /** Fixed in-sandbox port for the injection proxy (kept clear of dev-server ports). */
 export const INJECT_PROXY_PORT = 8420;
 

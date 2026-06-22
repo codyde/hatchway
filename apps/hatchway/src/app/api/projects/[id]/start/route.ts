@@ -12,6 +12,7 @@ import { sendCommandToRunner } from '@hatchway/agent-core/lib/runner/broker-stat
 import { getProjectRunnerId } from '@/lib/runner-utils';
 import type { StartDevServerCommand } from '@/shared/runner/messages';
 import { requireProjectOwnership, handleAuthError } from '@/lib/auth-helpers';
+import { SANDBOX_DEV_PORT } from '@/lib/sandbox/inject-proxy-source';
 
 // POST /api/projects/:id/start - Start dev server
 export async function POST(
@@ -67,23 +68,34 @@ export async function POST(
       console.log(`🚀 Starting dev server for ${proj.name}`);
       console.log(`   Previous port: ${proj.devServerPort ?? 'none'}, Framework: ${proj.detectedFramework ?? 'unknown'}`);
 
-      // Step 1: Allocate port BEFORE spawning (proactive allocation)
-      // Skip local port availability checks for remote runners (they run on different machines)
-      const isRemoteRunner = runnerId !== 'local';
-      const portInfo = await reserveOrReallocatePort({
-        projectId: id,
-        projectType: proj.projectType,
-        runCommand: proj.runCommand,
-        preferredPort: proj.devServerPort, // Try to reuse existing port if available
-        detectedFramework: proj.detectedFramework, // Framework detected during build
-      }, isRemoteRunner); // Skip port check for remote runners
+      // Step 1: Determine the dev-server port.
+      // Sandbox previews each run on their own isolated host, so ports can never
+      // collide — use a fixed port and skip allocation/conflict checks. Local
+      // mode allocates a non-conflicting port on the host.
+      const isSandboxMode = ((proj.executionMode as string | null) ?? 'local') === 'sandbox';
+      let portInfo: { port: number; framework: Parameters<typeof buildEnvForFramework>[0] };
+      if (isSandboxMode) {
+        portInfo = {
+          port: SANDBOX_DEV_PORT,
+          framework: ((proj.detectedFramework as string | null) ?? 'node') as Parameters<typeof buildEnvForFramework>[0],
+        };
+        console.log(`📍 Sandbox fixed port ${portInfo.port}`);
+      } else {
+        const isRemoteRunner = runnerId !== 'local';
+        portInfo = await reserveOrReallocatePort({
+          projectId: id,
+          projectType: proj.projectType,
+          runCommand: proj.runCommand,
+          preferredPort: proj.devServerPort, // Try to reuse existing port if available
+          detectedFramework: proj.detectedFramework, // Framework detected during build
+        }, isRemoteRunner); // Skip port check for remote runners
 
-      // Log if port changed (helps debug port drift issues)
-      if (proj.devServerPort && proj.devServerPort !== portInfo.port) {
-        console.warn(`⚠️ Port changed for ${proj.name}: ${proj.devServerPort} → ${portInfo.port} (framework: ${portInfo.framework})`);
+        // Log if port changed (helps debug port drift issues)
+        if (proj.devServerPort && proj.devServerPort !== portInfo.port) {
+          console.warn(`⚠️ Port changed for ${proj.name}: ${proj.devServerPort} → ${portInfo.port} (framework: ${portInfo.framework})`);
+        }
+        console.log(`📍 Allocated port ${portInfo.port} for framework ${portInfo.framework}`);
       }
-      
-      console.log(`📍 Allocated port ${portInfo.port} for framework ${portInfo.framework}`);
 
       // Step 2: Create operation record for tracking
       operationId = randomUUID();
