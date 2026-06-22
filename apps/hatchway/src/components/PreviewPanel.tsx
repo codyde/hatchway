@@ -368,8 +368,12 @@ export default function PreviewPanel({
   const prevBuildActiveRef = useRef(isBuildActive);
   
   useEffect(() => {
-    // Auto-refresh iframe when build completes
-    if (prevBuildActiveRef.current && !isBuildActive && previewUrl) {
+    // Auto-refresh iframe when build completes (local mode only). For sandbox,
+    // the build finishing does NOT mean the new code is live — the workspace
+    // still has to sync into the box and the dev server restart there. Sandbox
+    // reloads are driven by the dev-server status transition below instead, so
+    // we don't refresh prematurely onto the previous build.
+    if (prevBuildActiveRef.current && !isBuildActive && previewUrl && !isSandboxProject) {
       if (DEBUG_PREVIEW) console.log('[PreviewPanel] Build completed - auto-refreshing iframe');
       // Small delay to ensure all file writes are flushed
       setTimeout(() => {
@@ -377,7 +381,24 @@ export default function PreviewPanel({
       }, 500);
     }
     prevBuildActiveRef.current = isBuildActive;
-  }, [isBuildActive, previewUrl, handleRefresh]);
+  }, [isBuildActive, previewUrl, handleRefresh, isSandboxProject]);
+
+  // Sandbox: the preview is a synced COPY served behind a STABLE railgate URL,
+  // so the iframe never reloads itself after a re-sync. When the dev server
+  // goes starting -> running (a sync just finished with the new code), force a
+  // reload so the update appears without a manual refresh. If the dev server is
+  // still warming up, the injection-proxy "Starting preview…" splash
+  // auto-refreshes until it's ready.
+  const prevDevStatusRef = useRef(currentProject?.devServerStatus);
+  useEffect(() => {
+    const status = currentProject?.devServerStatus;
+    const prev = prevDevStatusRef.current;
+    prevDevStatusRef.current = status;
+    if (isSandboxProject && prev === 'starting' && status === 'running' && previewUrl) {
+      if (DEBUG_PREVIEW) console.log('[PreviewPanel] Sandbox re-sync complete - reloading iframe');
+      setTimeout(() => handleRefresh(), 300);
+    }
+  }, [currentProject?.devServerStatus, isSandboxProject, previewUrl, handleRefresh]);
 
   const handleCopyUrl = async () => {
     // Copy the externally-reachable URL (tunnel, or localhost for non-sandbox).
