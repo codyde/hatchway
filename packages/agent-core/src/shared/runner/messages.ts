@@ -108,6 +108,7 @@ export interface StartBuildCommand extends BaseCommand {
     claudeModel?: ClaudeModelId;
     droidModel?: string; // Model ID for factory-droid agent (e.g., 'claude-opus-4-8', 'gpt-5.2-codex', 'glm-4.7')
     codexThreadId?: string; // For resuming Codex threads
+    executionMode?: 'local' | 'sandbox'; // 'sandbox' → app runs in a Railway sandbox; steer the agent accordingly
     messageParts?: Array<{
       type: string;
       text?: string;

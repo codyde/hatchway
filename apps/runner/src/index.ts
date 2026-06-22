@@ -147,6 +147,15 @@ const debugLog = (...args: unknown[]) => {
 const DEFAULT_AGENT: AgentId = "claude-code";
 const CODEX_MODEL = "gpt-5-codex";
 
+// Appended to the build system prompt in Sandbox execution mode so generated
+// apps actually run in the ephemeral Railway sandbox + railgate tunnel.
+const SANDBOX_BUILD_GUIDANCE = `## Runtime environment: Railway sandbox (IMPORTANT)
+This app is RUN and PREVIEWED inside an ephemeral Linux sandbox (NOT the user's machine), reached through a public HTTPS tunnel. Build it so it runs there:
+- Bind the dev server to host 0.0.0.0 and honor the PORT environment variable — never hard-code a port or bind only to localhost.
+- Vite: in vite.config, set \`server.host: true\`, \`server.allowedHosts: true\` (so the tunnel domain is accepted), and \`server.hmr.clientPort: 443\` so HMR works over HTTPS.
+- Everything must run self-contained inside the sandbox; do not depend on services that only exist on the user's local machine.
+- Do NOT start a long-running dev server yourself — the platform starts it after the build. One-off commands (e.g. \`npm run build\`) to verify are fine.`;
+
 // Stderr debug logging - suppressed in TUI mode (SILENT_MODE=1)
 const stderrDebug = (message: string) => {
   if (process.env.SILENT_MODE !== '1' && DEBUG_BUILD) {
@@ -2407,7 +2416,10 @@ export async function startRunner(options: RunnerOptions = {}) {
             context: command.payload.context,
             query: agentQuery,
             workingDirectory: projectDirectory,
-            systemPrompt: orchestration.systemPrompt,
+            systemPrompt:
+              command.payload.executionMode === 'sandbox'
+                ? `${orchestration.systemPrompt}\n\n${SANDBOX_BUILD_GUIDANCE}`
+                : orchestration.systemPrompt,
             agent,
             claudeModel: agent === "claude-code" ? claudeModel : undefined,
             isNewProject: orchestration.isNewProject,

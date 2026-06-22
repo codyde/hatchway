@@ -511,6 +511,7 @@ export async function POST(
         droidModel: agentId === 'factory-droid' ? droidModel : undefined,
         template: templateMetadata,
         codexThreadId: body.codexThreadId,
+        executionMode, // steer the agent for sandbox runtime when 'sandbox'
         conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,
       },
     });

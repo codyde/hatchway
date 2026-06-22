@@ -15,30 +15,25 @@ const __dirname = dirname(__filename);
  * Works in both development (src/cli/utils/) and production (dist/cli/utils/) modes.
  */
 function findPackageRoot(): string {
-  // Try multiple possible locations
-  const possiblePaths = [
-    // Development: src/cli/utils/ -> apps/runner (3 levels up)
-    join(__dirname, '..', '..', '..'),
-    // Production from dist/cli/utils/: -> apps/runner (3 levels up, same structure)
-    join(__dirname, '..', '..', '..'),
-  ];
-  
-  for (const path of possiblePaths) {
-    const packageJsonPath = join(path, 'package.json');
+  // Walk up from this file looking for the @hatchway/cli package.json. A fixed
+  // "N levels up" breaks once rollup bundles this code into dist/index.js or
+  // dist/cli/index.js (different depths) — which is exactly why the version
+  // showed 0.0.0. Walking up is robust to wherever the bundle lands.
+  let dir = __dirname;
+  for (let i = 0; i < 8; i++) {
+    const packageJsonPath = join(dir, 'package.json');
     if (existsSync(packageJsonPath)) {
       try {
         const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-        // Verify this is the runner package
-        if (pkg.name === '@hatchway/cli') {
-          return path;
-        }
+        if (pkg.name === '@hatchway/cli') return dir;
       } catch {
-        // Continue to next path
+        // keep walking
       }
     }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
   }
-  
-  // Fallback to the standard path
   return join(__dirname, '..', '..', '..');
 }
 
