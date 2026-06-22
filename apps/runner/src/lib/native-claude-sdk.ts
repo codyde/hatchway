@@ -240,6 +240,15 @@ export function createNativeClaudeQuery(
       canUseTool: createProjectScopedPermissionHandler(workingDirectory),
       includePartialMessages: false, // We don't need streaming deltas
       settingSources: ['user', 'project'],
+      // Isolate builds from the user's personal MCP servers. settingSources
+      // ['user'] is kept (it carries the Claude Code subscription auth + any
+      // project config), but an explicit mcpServers OVERRIDES the servers
+      // loaded from ~/.claude.json — otherwise every build inherits the user's
+      // global MCP fleet (e.g. a `railway mcp` stdio server), which adds
+      // startup cost and an unnecessary, stall-prone tool surface the build
+      // never needs. Hatchway delivers its capabilities via the platform
+      // plugin's skills, not MCP, so the build wants zero MCP servers.
+      mcpServers: {},
       env: {
         ...process.env,
         CLAUDE_CODE_MAX_OUTPUT_TOKENS: process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS ?? '64000',
@@ -258,12 +267,30 @@ export function createNativeClaudeQuery(
       // See: https://github.com/anthropics/claude-code/issues/2970
       // See: https://github.com/anthropics/claude-agent-sdk-typescript/issues/46
       abortController,
-      // Capture SDK internal stderr to debug skill discovery (suppressed in TUI mode)
+      // Capture SDK internal stderr (suppressed in TUI mode). We surface two
+      // classes of line: skill-discovery diagnostics, and anything that signals
+      // the SDK is stalling/retrying — rate limits (429), overloaded/timeout
+      // errors, and retry/backoff notices. Without the latter, a multi-minute
+      // model stall (e.g. subscription rate-limit backoff) shows up as a silent
+      // gap in the build log with no explanation.
       stderr: (data: string) => {
-        if (process.env.SILENT_MODE !== '1') {
-          if (data.toLowerCase().includes('skill') || data.includes('add-dir') || data.includes('additional')) {
-            process.stderr.write(`[native-sdk:stderr] ${data}\n`);
-          }
+        if (process.env.SILENT_MODE === '1') return;
+        const lower = data.toLowerCase();
+        const isSkillDiag = lower.includes('skill') || data.includes('add-dir') || data.includes('additional');
+        const isStallSignal =
+          lower.includes('rate limit') ||
+          lower.includes('rate_limit') ||
+          lower.includes('429') ||
+          lower.includes('overloaded') ||
+          lower.includes('timeout') ||
+          lower.includes('timed out') ||
+          lower.includes('retry') ||
+          lower.includes('retrying') ||
+          lower.includes('backoff') ||
+          lower.includes('econnreset') ||
+          lower.includes('usage limit');
+        if (isSkillDiag || isStallSignal) {
+          process.stderr.write(`[native-sdk:stderr] ${data}\n`);
         }
       },
     };
