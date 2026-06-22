@@ -652,13 +652,20 @@ IMPORTANT:
               }
               
               // ============================================================
-              // AUTO-START DEV SERVER AFTER BUILD COMPLETION
-              // Only start if server is NOT already running (avoid restarting on follow-up builds)
-              // For follow-up builds, HMR will handle the file changes automatically
+              // AUTO-START / RE-SYNC DEV SERVER AFTER BUILD COMPLETION
+              // Local mode: the dev server runs the workspace directly, so HMR
+              //   picks up follow-up edits — only start when not already running.
+              // Sandbox mode: the dev server runs a SYNCED COPY inside the
+              //   Railway sandbox, so HMR can't see local edits. Every completed
+              //   build (including follow-ups) must re-issue start-dev-server,
+              //   which re-ships the workspace and restarts the sandbox dev
+              //   server. Without this a follow-up edit "completes" but the
+              //   preview keeps serving the previous build.
               // ============================================================
               const serverAlreadyRunning = updated.devServerStatus === 'running';
-              if (updated.runCommand && updated.path && !serverAlreadyRunning) {
-                console.log(`[events] 🚀 Auto-starting dev server for completed build...`);
+              const isSandboxMode = ((updated.executionMode as string | null) ?? 'local') === 'sandbox';
+              if (updated.runCommand && updated.path && (!serverAlreadyRunning || isSandboxMode)) {
+                console.log(`[events] 🚀 ${serverAlreadyRunning ? 'Re-syncing sandbox' : 'Auto-starting dev server'} for completed build...`);
 
                 try {
                   // Get runner for this project

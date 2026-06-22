@@ -164,8 +164,14 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
 
   // One script, run via a LOGIN shell (`bash -lc`) so the sandbox's mise setup
   // is sourced and node/npm/pnpm/railgate are on PATH (a non-interactive exec
-  // shell doesn't get them). `tmux kill-server` first so the dev + railgate
-  // sessions start under a fresh server that inherits this mise-active env.
+  // shell doesn't get them).
+  //
+  // Follow-up syncs reuse the same running sandbox: we restart ONLY the dev
+  // server and leave the injection proxy + railgate sessions running. railgate
+  // points at the (stable) injection-proxy port, so its tunnel — and the
+  // preview URL — stays connected while the dev server reloads the new code
+  // behind it. The proxy/railgate are (re)started only when not already up
+  // (first run, or after a checkpoint restore where no processes survive).
   const script = [
     'set -e',
     // Clear stale source (so deleted files don't linger on follow-ups) but KEEP
@@ -177,18 +183,22 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
     'rm -f /tmp/workspace.tgz.b64',
     `cd ${WORKSPACE}`,
     installCommand,
-    'tmux kill-server 2>/dev/null || true',
+    // Restart only the dev server with the freshly-synced code.
+    'tmux kill-session -t dev 2>/dev/null || true',
     `tmux new-session -d -s dev 'cd ${WORKSPACE} && PORT=${port} HOST=0.0.0.0 ${runCommand} > /tmp/dev.log 2>&1'`,
-    // Wait for the dev server to actually listen before exposing it, so the
+    // Wait for the dev server to actually listen before reporting ready, so the
     // first request through the tunnel doesn't hit a not-yet-ready server.
     `for i in $(seq 1 90); do (echo > /dev/tcp/127.0.0.1/${port}) 2>/dev/null && break; sleep 1; done`,
-    // Start the injection proxy (dev server → +selection script) and wait for
-    // it to listen, then point railgate at it instead of the dev server so the
-    // "select element" tool works in sandbox previews.
-    `tmux new-session -d -s inject 'TARGET_PORT=${port} PROXY_PORT=${INJECT_PROXY_PORT} node ${INJECT_PROXY_PATH} > /tmp/inject.log 2>&1'`,
+    // Injection proxy (dev server → +selection script). Survives follow-ups;
+    // railgate points at it, not the dev server, so the "select element" tool
+    // works and the tunnel target port never changes.
+    `tmux has-session -t inject 2>/dev/null || tmux new-session -d -s inject 'TARGET_PORT=${port} PROXY_PORT=${INJECT_PROXY_PORT} node ${INJECT_PROXY_PATH} > /tmp/inject.log 2>&1'`,
     `for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/${INJECT_PROXY_PORT}) 2>/dev/null && break; sleep 1; done`,
-    `tmux new-session -d -s railgate 'railgate http ${INJECT_PROXY_PORT} -r ${relay} -t ${token} --subdomain ${subdomain} --force > /tmp/railgate.log 2>&1'`,
-    // Wait for railgate to register the tunnel with the relay before we report ready.
+    // railgate: start only if not already running, so follow-up syncs keep the
+    // existing tunnel/URL connected instead of tearing it down and reconnecting.
+    `tmux has-session -t railgate 2>/dev/null || tmux new-session -d -s railgate 'railgate http ${INJECT_PROXY_PORT} -r ${relay} -t ${token} --subdomain ${subdomain} --force > /tmp/railgate.log 2>&1'`,
+    // Wait for railgate to register the tunnel with the relay before we report
+    // ready (already-present 'tunnel active' from a prior run matches at once).
     `for i in $(seq 1 30); do grep -q 'tunnel active' /tmp/railgate.log 2>/dev/null && break; sleep 1; done`,
   ].join('\n');
 
