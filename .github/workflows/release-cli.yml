@@ -45,17 +45,6 @@ jobs:
       - name: Build CLI
         run: pnpm run build:cli
 
-      - name: Prepare package.json for publishing
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Preparing package.json for release"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          node apps/runner/scripts/prepare-release.js
-
-          echo ""
-          echo "Verifying updated package.json dependencies:"
-          cat apps/runner/package.json | jq '.dependencies'
-
       - name: Create tarball
         run: |
           cd apps/runner
@@ -113,7 +102,7 @@ jobs:
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "Publishing @hatchway/cli to npm..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          npm publish --access public
+          pnpm publish --no-git-checks --access public
           echo "Published to npm"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

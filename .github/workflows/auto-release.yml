@@ -199,18 +199,6 @@ jobs:
       # package.json, so no rebuild is needed after the version bump.
       # ============================================================
 
-      - name: Prepare package.json for publishing
-        if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Preparing package.json for release"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          node apps/runner/scripts/prepare-release.js
-
-          echo ""
-          echo "Verifying updated package.json dependencies:"
-          cat apps/runner/package.json | jq '.dependencies'
-
       - name: Create tarball
         if: steps.skip_ci.outputs.skip == 'false' && steps.skip_release.outputs.skip == 'false'
         run: |
@@ -252,7 +240,9 @@ jobs:
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "Publishing @hatchway/cli v${{ steps.version.outputs.new_version }} to npm..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          npm publish --access public
+          # pnpm publish rewrites workspace:* refs to real versions; bundled deps
+          # live in devDependencies (not installed by consumers), so no strip step.
+          pnpm publish --no-git-checks --access public
           echo "✓ Published to npm"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
