@@ -8,13 +8,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Paths relative to this bin script
-const instrumentPath = resolve(__dirname, '../dist/instrument.js');
 const cliPath = resolve(__dirname, '../dist/cli.js');
 
-// Spawn node with --import flag for proper ESM instrumentation
 const child = spawn(
   process.execPath, // Use the same Node.js binary
-  ['--import', instrumentPath, cliPath, ...process.argv.slice(2)],
+  [cliPath, ...process.argv.slice(2)],
   {
     stdio: 'inherit',
     env: process.env,

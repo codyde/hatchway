@@ -20,7 +20,6 @@ interface WebSocketMessage {
     type: string;
     data: unknown;
     timestamp: number;
-    _sentry?: { trace?: string; baggage?: string }; // Optional trace context for distributed tracing
   }>;
   timestamp?: number;
   clientId?: string;
@@ -52,7 +51,6 @@ interface UseBuildWebSocketReturn {
   clearState: () => void; // Clear the build state (used when starting a new build to prevent stale data)
   cancelBuild: () => Promise<boolean>; // Cancel the current build
   isCancelling: boolean; // Whether a cancel is in progress
-  sentryTrace: { trace?: string; baggage?: string } | null; // Current trace context from last WebSocket message
   runnerActive: boolean; // True if we've received runner events recently (within last 30s)
 }
 
@@ -68,7 +66,6 @@ export function useBuildWebSocket({
   const [isConnected, setIsConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const [sentryTrace, setSentryTrace] = useState<{ trace?: string; baggage?: string } | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [lastRunnerEventTime, setLastRunnerEventTime] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -242,16 +239,7 @@ export function useBuildWebSocket({
     // Track that we received events from the runner
     // This is used to determine if the runner is actively connected
     setLastRunnerEventTime(Date.now());
-    
-    // Extract trace context from the most recent update that has it
-    // This allows linking frontend operations back to backend AI operations
-    const latestTraceContext = updates
-      .reverse()
-      .find(u => u._sentry)?._sentry || null;
-    if (latestTraceContext) {
-      setSentryTrace(latestTraceContext);
-    }
-    
+
     setState((prevState) => {
       // BUG FIX: If prevState is null (before hydration), queue the updates for later
       // instead of dropping them. We'll create a minimal state to hold the updates.
@@ -758,7 +746,6 @@ export function useBuildWebSocket({
     clearState,
     cancelBuild,
     isCancelling,
-    sentryTrace,
     runnerActive,
   };
 }

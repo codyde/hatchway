@@ -339,7 +339,6 @@ function HomeContent() {
     clearState: clearWsState,
     cancelBuild,
     isCancelling,
-    sentryTrace: wsSentryTrace,
     runnerActive,
   } = useBuildWebSocket({
     projectId: currentProject?.id || '',

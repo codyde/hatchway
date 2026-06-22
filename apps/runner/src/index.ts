@@ -531,7 +531,6 @@ function createCodexQuery(): BuildQueryFn {
     fileLog.info("Working directory:", workingDirectory);
     fileLog.info("Prompt length:", prompt.length);
 
-    // Note: Codex is auto-instrumented by Sentry's openAIIntegration via OTel
     const codex = new Codex();
 
     const systemParts: string[] = [CODEX_SYSTEM_PROMPT.trim()]; // Use Codex-specific prompt (no TodoWrite tool)
@@ -1119,8 +1118,8 @@ export async function startRunner(options: RunnerOptions = {}) {
   let lastCommandReceived = Date.now(); // BUG FIX: Track when we last received a command
 
   // ============================================================
-  // HTTP PERSISTENCE FOR PROPER DISTRIBUTED TRACE CONTEXT
-  // DB writes now go via HTTP to ensure traces are properly linked
+  // HTTP PERSISTENCE
+  // DB writes go via HTTP to the build-events endpoint
   // ============================================================
 
   interface BuildContext {
@@ -1143,7 +1142,6 @@ export async function startRunner(options: RunnerOptions = {}) {
   /**
    * Direct persistence for special events (TodoWrite, start)
    * These bypass the buffer and go directly to the original endpoint.
-   * Includes Sentry trace headers for distributed tracing.
    */
   /**
    * Helper function to retry HTTP requests
@@ -1215,7 +1213,6 @@ export async function startRunner(options: RunnerOptions = {}) {
 
   /**
    * Send a build event to the HTTP persistence endpoint.
-   * This ensures DB writes are properly linked in distributed traces.
    *
    * SIMPLIFIED: Only persists meaningful events:
    * - start: Session status update
@@ -1385,10 +1382,9 @@ export async function startRunner(options: RunnerOptions = {}) {
       }
     };
 
-    // REMOVED: Manual Sentry span creation - rely on automatic instrumentation
     sendOperation();
 
-    // ALSO persist DB-worthy events via HTTP for proper trace linking
+    // ALSO persist DB-worthy events via HTTP
     if (DB_WORTHY_RUNNER_EVENTS.includes(event.type) && event.projectId) {
       // Get session ID from active build context if available
       const context = event.commandId ? activeBuildContexts.get(event.commandId) : null;
@@ -2253,8 +2249,6 @@ export async function startRunner(options: RunnerOptions = {}) {
         fileLog.info("Agent:", command.payload?.agent);
         fileLog.info("Template:", command.payload?.template);
 
-        // REMOVED: Manual Sentry span creation - rely on automatic instrumentation
-        // Build operation (previously wrapped in Sentry span)
         try {
           loggedFirstChunk = false;
           if (!command.payload?.prompt || !command.payload?.operationType) {

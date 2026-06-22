@@ -82,7 +82,6 @@ interface BatchedUpdate {
     type: string;
     data: unknown;
     timestamp: number;
-    _sentry?: { trace?: string; baggage?: string }; // Optional trace context for distributed tracing
   }>;
 }
 
@@ -978,14 +977,11 @@ class BuildWebSocketServer {
       });
     }
 
-    const traceContext = undefined;
-
     const batch = this.pendingUpdates.get(key)!;
     batch.updates.push({
       type: 'state-update',
       data: state,
       timestamp: Date.now(),
-      _sentry: traceContext, // Optional - won't break if missing
     });
 
     // If batch is getting large, flush immediately
@@ -1027,14 +1023,11 @@ class BuildWebSocketServer {
       });
     }
 
-    const traceContext = undefined;
-
     const batch = this.pendingUpdates.get(key)!;
     batch.updates.push({
       type: 'tool-call',
       data: toolCall,
       timestamp: Date.now(),
-      _sentry: traceContext, // Optional - won't break if missing
     });
 
     // Tool updates are critical for UI - flush immediately

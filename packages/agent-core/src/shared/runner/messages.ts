@@ -65,10 +65,6 @@ export interface BaseCommand {
   type: RunnerCommandType;
   projectId: string;
   timestamp: string;
-  _sentry?: {
-    trace?: string;
-    baggage?: string;
-  };
 }
 
 /**
@@ -86,10 +82,6 @@ export interface AnalyzeProjectCommand {
     claudeModel?: ClaudeModelId;
     tags?: AppliedTag[];
     runnerId: string;
-  };
-  _sentry?: {
-    trace?: string;
-    baggage?: string;
   };
 }
 
@@ -308,10 +300,6 @@ export interface BaseEvent {
   projectId?: string;
   sessionId?: string;
   timestamp: string;
-  _sentry?: {
-    trace?: string;
-    baggage?: string;
-  };
 }
 
 export interface AckEvent extends BaseEvent {

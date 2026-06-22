@@ -284,7 +284,7 @@ program
 
 program
   .command('login')
-  .description('Authenticate with Hatchway via OAuth (GitHub/Sentry)')
+  .description('Authenticate with Hatchway via OAuth (GitHub)')
   .option('-u, --url <url>', 'Hatchway server URL (default: https://hatchway.sh)')
   .option('-f, --force', 'Force re-authentication even if already logged in')
   .action(async (options) => {

@@ -14,7 +14,7 @@ interface LoginOptions {
  *   hatchway login [--url <server-url>] [--force]
  * 
  * This command:
- * 1. Opens a browser for OAuth authentication (GitHub or Sentry)
+ * 1. Opens a browser for OAuth authentication (GitHub)
  * 2. Creates a runner token automatically
  * 3. Stores the token locally for future use
  */

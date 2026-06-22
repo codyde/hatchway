@@ -384,15 +384,14 @@ function extractAndConvertTodoWrite(text: string): string {
 
 /**
  * Transform Codex SDK event stream to unified message format
- * 
+ *
  * IMPORTANT: This function must consume the entire event stream directly from
- * thread.runStreamed().events to preserve Sentry's async context for AI spans.
- * Do NOT wrap individual events in intermediate generators as this breaks the
- * AsyncLocalStorage context that Sentry uses for instrumentation.
- * 
+ * thread.runStreamed().events. Do NOT wrap individual events in intermediate
+ * generators — that breaks the streaming async context the SDK relies on.
+ *
  * ✅ Correct:   transformCodexStream(streamedTurn.events)
  * ❌ Incorrect: for (event of events) { transformCodexStream(singleEvent()) }
- * 
+ *
  * @param stream AsyncIterable of ThreadEvent from Codex SDK
  */
 export async function* transformCodexStream(
