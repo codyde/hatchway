@@ -18,6 +18,12 @@ interface TransformerState {
   expectedCwd?: string;
   commandMetadata: Map<string, { command?: string }>;
   toolNames: Map<string, string>; // Track tool names by tool call ID
+  // Bridge the SDK's built-in Task* tools to the UI's TodoWrite checklist.
+  // The new claude_code preset tracks progress via TaskCreate/TaskUpdate (and
+  // defers TodoWrite so it isn't reliably loadable), but the UI renders only
+  // TodoWrite. We accumulate task state here and emit synthetic TodoWrite events.
+  taskTodos: Map<string, { content: string; status: 'pending' | 'in_progress' | 'completed'; activeForm: string }>;
+  pendingTaskCreates: Map<string, string>; // tool_use_id -> subject (awaiting the result's task id)
 }
 
 // Track state across transformations
@@ -26,6 +32,8 @@ let transformerState: TransformerState = {
   messageStarted: false,
   commandMetadata: new Map(),
   toolNames: new Map(),
+  taskTodos: new Map(),
+  pendingTaskCreates: new Map(),
 };
 
 export function resetTransformerState() {
@@ -34,11 +42,23 @@ export function resetTransformerState() {
     messageStarted: false,
     commandMetadata: new Map(),
     toolNames: new Map(),
+    taskTodos: new Map(),
+    pendingTaskCreates: new Map(),
   };
 }
 
 export function setExpectedCwd(cwd: string) {
   transformerState.expectedCwd = cwd;
+}
+
+/** Build a synthetic TodoWrite event from the accumulated Task* state. */
+function buildTaskTodoEvent() {
+  return {
+    type: 'tool-input-available' as const,
+    toolCallId: `task-todo-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    toolName: 'TodoWrite',
+    input: { todos: Array.from(transformerState.taskTodos.values()) },
+  };
 }
 
 /**
@@ -289,6 +309,25 @@ export function transformAgentMessageToSSE(agentMessage: any): SSEEvent[] {
             input: block.input,
           });
 
+          // Bridge Task* tools -> TodoWrite checklist the UI renders.
+          if (block.name === 'TaskCreate') {
+            const ti = block.input as { subject?: string; description?: string } | undefined;
+            const subject = ti?.subject || ti?.description || 'Task';
+            // Resolve the task id from this call's result (see tool_result below).
+            transformerState.pendingTaskCreates.set(block.id, subject);
+          } else if (block.name === 'TaskUpdate') {
+            const ti = block.input as { taskId?: string; status?: string } | undefined;
+            const taskId = ti?.taskId ? String(ti.taskId) : undefined;
+            if (taskId && transformerState.taskTodos.has(taskId)) {
+              if (ti?.status === 'deleted') {
+                transformerState.taskTodos.delete(taskId);
+              } else if (ti?.status === 'pending' || ti?.status === 'in_progress' || ti?.status === 'completed') {
+                transformerState.taskTodos.get(taskId)!.status = ti.status;
+              }
+              events.push(buildTaskTodoEvent());
+            }
+          }
+
           if (block.name === 'command_execution') {
           const command =
             typeof block.input?.command === 'string'
@@ -319,6 +358,25 @@ export function transformAgentMessageToSSE(agentMessage: any): SSEEvent[] {
               .join('\n');
           } else if (typeof output !== 'string') {
             output = JSON.stringify(output);
+          }
+
+          // Bridge a TaskCreate result -> add the task to the TodoWrite checklist.
+          // The result carries { task: { id, subject } }; pair it with the subject
+          // captured from the tool_use call so TaskUpdate (by id) can update it.
+          if (transformerState.pendingTaskCreates.has(toolId)) {
+            const subject = transformerState.pendingTaskCreates.get(toolId)!;
+            transformerState.pendingTaskCreates.delete(toolId);
+            let taskId: string | undefined;
+            try {
+              const parsed = typeof output === 'string' ? JSON.parse(output) : output;
+              taskId = parsed?.task?.id ? String(parsed.task.id) : undefined;
+            } catch {
+              // result wasn't JSON; skip — task just won't appear in the checklist
+            }
+            if (taskId) {
+              transformerState.taskTodos.set(taskId, { content: subject, status: 'pending', activeForm: subject });
+              events.push(buildTaskTodoEvent());
+            }
           }
 
           // Process TodoWrite markers in command outputs
