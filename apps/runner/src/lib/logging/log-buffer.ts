@@ -8,10 +8,14 @@
 import { existsSync, mkdirSync, appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { EventEmitter } from 'node:events';
+import { getWorkspaceRoot } from '../workspace.js';
 import type { LogEntry, LogFilter } from './types.js';
 
 const DEFAULT_BUFFER_SIZE = 100;
-const LOG_DIR = 'logs';
+// Stable, absolute logs dir beside the built apps (workspace root) — a relative
+// 'logs' resolved against process.cwd(), so writing/reading diverged when the
+// runner was launched from different directories (TUI copy showed 0 lines).
+const LOG_DIR = join(getWorkspaceRoot(), 'logs');
 const LOG_FILE = 'runner-tui.log';
 
 export class LogBuffer extends EventEmitter {

@@ -5,8 +5,11 @@
 
 import { appendFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { getWorkspaceRoot } from './workspace.js';
 
-const LOGS_DIR = join(process.cwd(), 'logs');
+// Stable, predictable location beside the built apps (the workspace root),
+// instead of process.cwd() which varies with where the runner is launched.
+const LOGS_DIR = join(getWorkspaceRoot(), 'logs');
 const RUNNER_LOG = join(LOGS_DIR, 'runner.log');
 const STREAM_LOG = join(LOGS_DIR, 'stream.log');
 const ERRORS_LOG = join(LOGS_DIR, 'errors.log');
