@@ -112,7 +112,16 @@ export async function POST(
     // 'sandbox' mode the runner then ships the built workspace to a
     // backend-managed Railway sandbox via POST /api/projects/[id]/sandbox/sync
     // (the run/preview target) — no runner override here.
-    const executionMode = body.executionMode ?? (project.executionMode as 'local' | 'sandbox' | null) ?? 'local';
+    // executionMode is chosen ONCE, on the initial build, and locked for the
+    // life of the project. Follow-up builds (enhancement / focused-edit) must
+    // NOT change it — the client's global execution-mode context can carry a
+    // stale/default 'local', and honoring it here would downgrade a sandbox
+    // project to local, breaking the post-build re-sync AND stop/restart
+    // (which then runs a local dev server and shows a localhost URL).
+    const persistedMode = (project.executionMode as 'local' | 'sandbox' | null) ?? 'local';
+    const executionMode = body.operationType === 'initial-build'
+      ? (body.executionMode ?? persistedMode)
+      : persistedMode;
     if (executionMode !== project.executionMode) {
       await db.update(projects).set({ executionMode }).where(eq(projects.id, id));
     }
