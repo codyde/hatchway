@@ -54,13 +54,10 @@ export class TunnelManager extends EventEmitter {
       return existing.url;
     }
 
-    // Ingress backend: railgate (self-hosted relay) when configured, else cloudflared.
-    // Sandbox mode injects RAILGATE_RELAY_URL so the dev server is exposed at
-    // https://<RAILGATE_SUBDOMAIN>.<RAILGATE_BASE_DOMAIN> via the relay.
-    const useRailgate = !!process.env.RAILGATE_RELAY_URL;
-
-    // Ensure cloudflared is installed (only for the cloudflared backend)
-    if (!useRailgate && !this.cloudflaredPath) {
+    // Ensure cloudflared is installed (the local runner's tunnel backend).
+    // Note: Sandbox mode exposes the preview via railgate run *inside the
+    // sandbox* by the backend (see apps/hatchway sandbox manager), not here.
+    if (!this.cloudflaredPath) {
       this.cloudflaredPath = await ensureCloudflared(this.silent);
     }
 
@@ -95,9 +92,7 @@ export class TunnelManager extends EventEmitter {
     const errors: string[] = [];
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        return await (useRailgate
-          ? this._createRailgateTunnelAttempt(port, tunnelTargetPort, injectionProxy)
-          : this._createTunnelAttempt(port, tunnelTargetPort, injectionProxy));
+        return await this._createTunnelAttempt(port, tunnelTargetPort, injectionProxy);
       } catch (error: any) {
         const errorMsg = error?.message || String(error);
         errors.push(errorMsg);
@@ -327,100 +322,6 @@ export class TunnelManager extends EventEmitter {
         if (tunnel?.injectionProxy) {
           tunnel.injectionProxy.close().catch(() => {});
         }
-        this.tunnels.delete(devServerPort);
-        this.emit('tunnel-closed', devServerPort);
-      });
-
-      proc.on('error', (error) => {
-        if (!resolved) {
-          clearTimeout(timeout);
-          reject(error);
-        }
-      });
-    });
-  }
-
-  /** Deterministic public URL for the railgate tunnel, from injected env. */
-  private _railgatePublicUrl(): string | null {
-    const sub = process.env.RAILGATE_SUBDOMAIN;
-    const base = process.env.RAILGATE_BASE_DOMAIN;
-    return sub && base ? `https://${sub}.${base}` : null;
-  }
-
-  /**
-   * Single attempt to expose a port via the railgate relay (self-hosted tunnel).
-   * The railgate client (baked into the sandbox image) reads RAILGATE_RELAY_URL /
-   * RAILGATE_TOKEN / RAILGATE_SUBDOMAIN from env and dials out to the relay.
-   * --force reclaims the stable subdomain so the URL persists across restarts.
-   */
-  private _createRailgateTunnelAttempt(
-    devServerPort: number,
-    tunnelTargetPort: number,
-    injectionProxy?: InjectionProxy,
-  ): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const subdomain = process.env.RAILGATE_SUBDOMAIN;
-      const args = ['http', String(tunnelTargetPort), '--force'];
-      if (subdomain) args.push('--subdomain', subdomain);
-      this.log(`[tunnel] Starting railgate: railgate ${args.join(' ')} (dev server on ${devServerPort})`);
-
-      const proc = spawn('railgate', args, {
-        cwd: process.cwd(),
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: process.env,
-      });
-
-      let resolved = false;
-      let parsedUrl: string | null = null;
-
-      const finish = (url: string) => {
-        if (resolved) return;
-        resolved = true;
-        clearTimeout(timeout);
-        this.tunnels.set(devServerPort, {
-          url,
-          port: devServerPort,
-          proxyPort: tunnelTargetPort,
-          process: proc,
-          injectionProxy,
-        });
-        this.log(`✅ railgate tunnel ready: ${url} → localhost:${tunnelTargetPort}`);
-        resolve(url);
-      };
-
-      const timeout = setTimeout(() => {
-        if (resolved) return;
-        // Best-effort: the URL is deterministic, so resolve with it even if we
-        // never saw an explicit "active" marker (relay routes once connected).
-        const url = parsedUrl ?? this._railgatePublicUrl();
-        if (url) {
-          this.log(`[tunnel] railgate URL (unconfirmed after 30s): ${url}`);
-          finish(url);
-        } else {
-          proc.kill();
-          reject(new Error('railgate tunnel timeout (30s) and no RAILGATE_BASE_DOMAIN to construct URL'));
-        }
-      }, 30000);
-
-      const onData = (data: Buffer) => {
-        const output = data.toString();
-        if (!parsedUrl) {
-          const m = output.match(/https:\/\/[a-zA-Z0-9.-]+/);
-          if (m) parsedUrl = m[0];
-        }
-        if (!resolved && /tunnel active|registered|connected/i.test(output)) {
-          const url = parsedUrl ?? this._railgatePublicUrl();
-          if (url) finish(url);
-        }
-      };
-
-      proc.stdout?.on('data', onData);
-      proc.stderr?.on('data', onData);
-
-      proc.on('exit', (code, signal) => {
-        this.log(`railgate tunnel exited for port ${devServerPort} with code ${code} signal ${signal}`);
-        const tunnel = this.tunnels.get(devServerPort);
-        if (tunnel?.injectionProxy) tunnel.injectionProxy.close().catch(() => {});
         this.tunnels.delete(devServerPort);
         this.emit('tunnel-closed', devServerPort);
       });

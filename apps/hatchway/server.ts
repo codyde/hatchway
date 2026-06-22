@@ -110,18 +110,6 @@ app.prepare().then(() => {
   onRunnerStatusChange(async (runnerId, connected, affectedProjectIds) => {
     console.log(`[server] Runner ${runnerId} ${connected ? 'connected' : 'disconnected'}, notifying ${affectedProjectIds.length} projects`);
 
-    // When a sandbox runner disconnects, the sandbox is gone (crashed or idle-reaped);
-    // reflect that in the project's sandboxStatus so the UI doesn't show it running.
-    if (!connected && runnerId.startsWith('sandbox-') && affectedProjectIds.length > 0) {
-      try {
-        await db.update(projects)
-          .set({ sandboxStatus: 'stopped' })
-          .where(eq(projects.runnerId, runnerId));
-      } catch (error) {
-        console.error(`[server] Failed to mark sandbox stopped for ${runnerId}:`, error);
-      }
-    }
-
     // Emit project events for each affected project so SSE clients get updated
     for (const projectId of affectedProjectIds) {
       try {
