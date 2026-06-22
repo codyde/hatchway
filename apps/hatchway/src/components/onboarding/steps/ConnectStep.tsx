@@ -97,8 +97,8 @@ export function ConnectStep({ runnerKey, onNext, onBack, onSkip }: ConnectStepPr
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">Automatic sign-in</p>
             <p className="text-xs text-muted-foreground">
-              A browser window will open automatically for authentication. 
-              Sign in with GitHub or Sentry and you&apos;ll be connected instantly.
+              A browser window will open automatically for authentication.
+              Sign in with GitHub and you&apos;ll be connected instantly.
             </p>
           </div>
         </div>

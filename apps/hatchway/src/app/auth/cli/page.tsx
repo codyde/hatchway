@@ -2,7 +2,6 @@
 
 import { Suspense, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import Image from "next/image";
 import { signIn, useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Loader2, Github, CheckCircle2, XCircle } from "lucide-react";
@@ -17,7 +16,6 @@ function CLIAuthContent() {
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [isGitHubLoading, setIsGitHubLoading] = useState(false);
-  const [isSentryLoading, setIsSentryLoading] = useState(false);
 
   const completeAuth = async () => {
     if (!sessionToken) return;
@@ -93,21 +91,6 @@ function CLIAuthContent() {
     }
   };
 
-  const handleSentryLogin = async () => {
-    setIsSentryLoading(true);
-    setError(null);
-    try {
-      await signIn.oauth2({
-        providerId: "sentry",
-        callbackURL: `/auth/cli?session=${sessionToken}`,
-      });
-    } catch (err) {
-      console.error("Sentry OAuth error:", err);
-      setError("Failed to initiate Sentry login. Please try again.");
-      setIsSentryLoading(false);
-    }
-  };
-
   return (
     <>
       {/* Card */}
@@ -122,14 +105,14 @@ function CLIAuthContent() {
         {authState === "login" && (
           <>
             <p className="text-[#a9b1d6] text-center mb-8">
-              Choose a sign-in method to authorize the CLI
+              Sign in with GitHub to authorize the CLI
             </p>
 
             {/* OAuth Buttons */}
             <div className="space-y-4">
               <Button
                 onClick={handleGitHubLogin}
-                disabled={isGitHubLoading || isSentryLoading}
+                disabled={isGitHubLoading}
                 className="w-full h-12 bg-[#24283b] hover:bg-[#414868] border border-[#7aa2f7]/30 text-white font-medium rounded-lg transition-all duration-200"
               >
                 {isGitHubLoading ? (
@@ -138,25 +121,6 @@ function CLIAuthContent() {
                   <Github className="h-5 w-5 mr-3" />
                 )}
                 Continue with GitHub
-              </Button>
-
-              <Button
-                onClick={handleSentryLogin}
-                disabled={isGitHubLoading || isSentryLoading}
-                className="w-full h-12 bg-[#24283b] hover:bg-[#414868] border border-[#7aa2f7]/30 text-white font-medium rounded-lg transition-all duration-200"
-              >
-                {isSentryLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin mr-3" />
-                ) : (
-                  <Image
-                    src="/sentryglyph.png"
-                    alt="Sentry"
-                    width={20}
-                    height={20}
-                    className="mr-3"
-                  />
-                )}
-                Continue with Sentry
               </Button>
             </div>
 

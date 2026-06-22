@@ -129,31 +129,10 @@ function createAuth() {
       minPasswordLength: 8,
       maxPasswordLength: 128,
     },
-    // OAuth plugins: Sentry and GitHub
+    // OAuth plugins: GitHub
     plugins: [
       genericOAuth({
         config: [
-          // Sentry OAuth
-          {
-            providerId: "sentry",
-            clientId: process.env.SENTRY_OAUTH_CLIENT_ID!,
-            clientSecret: process.env.SENTRY_OAUTH_CLIENT_SECRET!,
-            authorizationUrl: "https://sentry.io/oauth/authorize/",
-            tokenUrl: "https://sentry.io/oauth/token/",
-            scopes: ["openid", "profile", "email"],
-            pkce: true,
-            getUserInfo: async (tokens) => {
-              // Sentry returns user info in the token response
-              const raw = tokens.raw as Record<string, unknown>;
-              const user = raw.user as { id: string; name: string; email: string };
-              return {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                emailVerified: true,
-              };
-            },
-          },
           // GitHub OAuth
           {
             providerId: "github",

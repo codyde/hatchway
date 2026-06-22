@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { signIn, signUp } from "@/lib/auth-client";
 import {
   Dialog,
@@ -21,17 +20,16 @@ interface LoginModalProps {
 }
 
 type Mode = "login" | "signup";
-type AuthMethod = "sentry" | "email";
+type AuthMethod = "oauth" | "email";
 
 export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
   const [mode, setMode] = useState<Mode>("login");
-  const [authMethod, setAuthMethod] = useState<AuthMethod>("sentry");
+  const [authMethod, setAuthMethod] = useState<AuthMethod>("oauth");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSentryLoading, setIsSentryLoading] = useState(false);
   const [isGitHubLoading, setIsGitHubLoading] = useState(false);
 
   const resetForm = () => {
@@ -108,21 +106,6 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
     setError(null);
   };
 
-  const handleSentryLogin = async () => {
-    setError(null);
-    setIsSentryLoading(true);
-    try {
-      await signIn.oauth2({
-        providerId: "sentry",
-        callbackURL: "/",
-      });
-    } catch (err) {
-      console.error("Sentry OAuth error:", err);
-      setError("Failed to initiate Sentry login. Please try again.");
-      setIsSentryLoading(false);
-    }
-  };
-
   const handleGitHubLogin = async () => {
     setError(null);
     setIsGitHubLoading(true);
@@ -138,8 +121,8 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
     }
   };
 
-  const handleBackToSentry = () => {
-    setAuthMethod("sentry");
+  const handleBackToOptions = () => {
+    setAuthMethod("oauth");
     setError(null);
     resetForm();
   };
@@ -158,46 +141,22 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
           </DialogDescription>
         </DialogHeader>
 
-        {authMethod === "sentry" ? (
+        {authMethod === "oauth" ? (
           <>
-            {/* OAuth Provider Buttons */}
-            <div className="mt-4 flex justify-center gap-4">
-              {/* Sentry OAuth Button */}
-              <button
-                type="button"
-                onClick={handleSentryLogin}
-                disabled={isSentryLoading || isGitHubLoading || isLoading}
-                className="w-16 h-16 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-700 hover:border-zinc-600 flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Sign in with Sentry"
-              >
-                {isSentryLoading ? (
-                  <Loader2 className="h-8 w-8 animate-spin text-white" />
-                ) : (
-                  <Image
-                    src="/sentryglyph.png"
-                    alt="Sentry"
-                    width={32}
-                    height={32}
-                    className="h-8 w-8"
-                  />
-                )}
-              </button>
-
-              {/* GitHub OAuth Button */}
-              <button
-                type="button"
-                onClick={handleGitHubLogin}
-                disabled={isSentryLoading || isGitHubLoading || isLoading}
-                className="w-16 h-16 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-700 hover:border-zinc-600 flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Sign in with GitHub"
-              >
-                {isGitHubLoading ? (
-                  <Loader2 className="h-8 w-8 animate-spin text-white" />
-                ) : (
-                  <Github className="h-8 w-8 text-white" />
-                )}
-              </button>
-            </div>
+            {/* GitHub OAuth Button */}
+            <Button
+              type="button"
+              onClick={handleGitHubLogin}
+              disabled={isGitHubLoading || isLoading}
+              className="mt-4 w-full btn-theme-primary"
+            >
+              {isGitHubLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Github className="h-4 w-4 mr-2" />
+              )}
+              Continue with GitHub
+            </Button>
 
             {/* Divider */}
             <div className="relative my-6">
@@ -214,7 +173,7 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
               type="button"
               variant="outline"
               onClick={() => setAuthMethod("email")}
-              disabled={isSentryLoading || isGitHubLoading}
+              disabled={isGitHubLoading}
               className="w-full bg-transparent border-zinc-700 hover:bg-zinc-900 hover:border-zinc-600 text-zinc-300"
             >
               <Mail className="h-4 w-4 mr-2" />
@@ -226,7 +185,7 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
             {/* Back button */}
             <button
               type="button"
-              onClick={handleBackToSentry}
+              onClick={handleBackToOptions}
               className="flex items-center gap-1 text-sm text-zinc-400 hover:text-white transition-colors mt-2 mb-4"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -351,8 +310,8 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
           </>
         )}
 
-        {/* Error display for Sentry auth */}
-        {authMethod === "sentry" && error && (
+        {/* Error display for OAuth options */}
+        {authMethod === "oauth" && error && (
           <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg mt-4">
             <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
             <p className="text-sm text-red-400">{error}</p>
