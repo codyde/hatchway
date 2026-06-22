@@ -1,6 +1,6 @@
 {
   "name": "@hatchway/runner",
-  "version": "0.50.81",
+  "version": "0.50.82",
   "description": "Lightweight Hatchway Runner - Connect to Hatchway server with minimal footprint",
   "private": false,
   "type": "module",
