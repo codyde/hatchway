@@ -128,6 +128,10 @@ export async function POST(
           workingDirectory: proj.path,
           env: portEnv,
           preferredPort: portInfo.port,
+          // Restart on the same path the project was built on. Without this the
+          // runner defaults to 'local' and a sandbox project comes back on
+          // localhost instead of re-syncing to its Railway sandbox.
+          executionMode: (proj.executionMode as 'local' | 'sandbox' | null) ?? 'local',
         },
       };
 

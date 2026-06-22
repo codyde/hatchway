@@ -3460,9 +3460,6 @@ function HomeContent() {
                               </svg>
                             </button>
                           </div>
-                          <div className="mt-2 flex justify-end">
-                            <ExecutionModeSelector disabled={isLoading} onChange={persistExecutionMode} />
-                          </div>
                         </form>
                       </div>
                     </motion.div>
