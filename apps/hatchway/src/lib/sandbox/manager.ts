@@ -154,7 +154,11 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
   // sessions start under a fresh server that inherits this mise-active env.
   const script = [
     'set -e',
-    `rm -rf ${WORKSPACE} && mkdir -p ${WORKSPACE}`,
+    // Clear stale source (so deleted files don't linger on follow-ups) but KEEP
+    // node_modules so re-install is near-instant. The tarball excludes
+    // node_modules, so extracting over it only refreshes source.
+    `mkdir -p ${WORKSPACE}`,
+    `find ${WORKSPACE} -mindepth 1 -maxdepth 1 ! -name node_modules -exec rm -rf {} + 2>/dev/null || true`,
     `base64 -d /tmp/workspace.tgz.b64 | tar xz -C ${WORKSPACE}`,
     'rm -f /tmp/workspace.tgz.b64',
     `cd ${WORKSPACE}`,

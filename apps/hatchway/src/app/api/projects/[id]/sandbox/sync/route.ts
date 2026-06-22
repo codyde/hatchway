@@ -12,7 +12,7 @@ import { db } from '@hatchway/agent-core/lib/db/client';
 import { projects } from '@hatchway/agent-core/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { authenticateRunnerRequest, isLocalMode } from '@/lib/auth-helpers';
-import { syncAndRun } from '@/lib/sandbox/manager';
+import { syncAndRun, checkpointProject } from '@/lib/sandbox/manager';
 
 // Installing deps inside the box can take a while.
 export const maxDuration = 300;
@@ -76,6 +76,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .where(eq(projects.id, id));
 
     console.log(`[sandbox/sync] project ${id} live at ${result.previewUrl} (sandbox ${result.sandboxId})`);
+
+    // Checkpoint after each build so the workspace + node_modules survive and a
+    // future cold start restores fast. Fire-and-forget — the snapshot can take a
+    // while and the preview is already live; the long-lived server finishes it.
+    checkpointProject({
+      id: project.id,
+      sandboxId: result.sandboxId,
+      sandboxCheckpoint: project.sandboxCheckpoint,
+      sandboxSubdomain: project.sandboxSubdomain,
+    }).catch((err) => console.error('[sandbox/sync] checkpoint failed (non-fatal):', err));
+
     return NextResponse.json({ previewUrl: result.previewUrl, sandboxId: result.sandboxId });
   } catch (err) {
     console.error('[sandbox/sync] failed:', err);

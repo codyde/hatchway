@@ -671,7 +671,7 @@ function HomeContent() {
   const selectedClaudeModel = claudeModels.find(
     (model) => model.id === selectedClaudeModelId,
   );
-  const selectedClaudeModelLabel = selectedClaudeModel?.label ?? "Claude Haiku 4.5";
+  const selectedClaudeModelLabel = selectedClaudeModel?.label ?? "Claude Sonnet 4.6";
 
   // Restore view preference from sessionStorage after mount (avoids hydration error)
   useEffect(() => {
@@ -740,15 +740,18 @@ function HomeContent() {
           appliedAt: new Date()
         },
         {
+          // Seed from the selected model (persisted; defaults to Sonnet) so the
+          // default tag is honest — the old hardcoded Haiku was silently remapped
+          // to Sonnet by the runner, which looked like the selection was ignored.
           key: 'model',
-          value: 'claude-haiku-4-5', // Default to Haiku for cost savings
+          value: selectedClaudeModelId,
           appliedAt: new Date()
         }
       ];
       setAppliedTags(defaultTags);
-      if (DEBUG_PAGE) console.log('[page] ✓ Default tags set: runner=%s, model=claude-haiku-4-5', defaultRunnerId);
+      if (DEBUG_PAGE) console.log('[page] ✓ Default tags set: runner=%s, model=%s', defaultRunnerId, selectedClaudeModelId);
     }
-  }, [currentProject, selectedProjectSlug, availableRunners, selectedRunnerId, appliedTags.length]);
+  }, [currentProject, selectedProjectSlug, availableRunners, selectedRunnerId, appliedTags.length, selectedClaudeModelId]);
 
   useEffect(() => {
     generationStateRef.current = generationState;

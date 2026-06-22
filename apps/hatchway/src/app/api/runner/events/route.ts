@@ -9,7 +9,6 @@ import { buildWebSocketServer } from '@hatchway/agent-core/lib/websocket/server'
 import { appendRunnerLog, markRunnerLogExit } from '@hatchway/agent-core/lib/runner/log-store';
 import { sendCommandToRunner } from '@hatchway/agent-core/lib/runner/broker-state';
 import { getProjectRunnerId } from '@/lib/runner-utils';
-import { checkpointProject } from '@/lib/sandbox/manager';
 import { projectEvents } from '@/lib/project-events';
 import {
   releasePortForProject,
@@ -622,15 +621,9 @@ IMPORTANT:
             if (updated) {
               emitProjectUpdateFromData(projectId, updated);
 
-              // Sandbox mode: snapshot the workspace as a durable restore point
-              // after the build. Fire-and-forget — the snapshot flush can take a
-              // while and shouldn't block the runner's event POST; the long-lived
-              // server process finishes it. checkpointProject is best-effort.
-              if (updated.executionMode === 'sandbox' && updated.sandboxId) {
-                checkpointProject(updated).catch((err) =>
-                  console.error('[events] sandbox checkpoint after build failed:', err),
-                );
-              }
+              // NOTE: sandbox checkpointing now happens in POST /sandbox/sync,
+              // AFTER the built workspace is shipped into the box — checkpointing
+              // here (build-completed, before the sync) would snapshot stale code.
 
               // Track project completion with key tags
               const completionAttributes: Record<string, string> = {
