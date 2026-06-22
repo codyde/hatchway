@@ -22,7 +22,14 @@ import { Sandbox } from 'railway';
 import { randomBytes } from 'node:crypto';
 import { db } from '@hatchway/agent-core/lib/db/client';
 import { projects } from '@hatchway/agent-core/lib/db/schema';
+import { SELECTION_SCRIPT } from '@hatchway/agent-core/lib/selection/injector';
 import { eq } from 'drizzle-orm';
+import {
+  INJECT_PROXY_PORT,
+  INJECT_PROXY_PATH,
+  INJECT_PROXY_SOURCE,
+  SELECTION_SCRIPT_PATH,
+} from './inject-proxy-source';
 
 const WORKSPACE = '/workspace';
 const IDLE_TIMEOUT_MINUTES = 30;
@@ -148,6 +155,13 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
   // Land the tarball (base64 text → decoded; avoids binary-transfer issues).
   await sandbox.files.write('/tmp/workspace.tgz.b64', options.tarballBase64);
 
+  // Land the element-selection injection proxy + the raw selection script it
+  // serves. railgate points at this proxy (not the dev server directly) so the
+  // previewed HTML carries the selection script — same shape as the local
+  // runner's tunnel→injection-proxy→dev-server chain.
+  await sandbox.files.write(INJECT_PROXY_PATH, INJECT_PROXY_SOURCE);
+  await sandbox.files.write(SELECTION_SCRIPT_PATH, SELECTION_SCRIPT);
+
   // One script, run via a LOGIN shell (`bash -lc`) so the sandbox's mise setup
   // is sourced and node/npm/pnpm/railgate are on PATH (a non-interactive exec
   // shell doesn't get them). `tmux kill-server` first so the dev + railgate
@@ -168,7 +182,12 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
     // Wait for the dev server to actually listen before exposing it, so the
     // first request through the tunnel doesn't hit a not-yet-ready server.
     `for i in $(seq 1 90); do (echo > /dev/tcp/127.0.0.1/${port}) 2>/dev/null && break; sleep 1; done`,
-    `tmux new-session -d -s railgate 'railgate http ${port} -r ${relay} -t ${token} --subdomain ${subdomain} --force > /tmp/railgate.log 2>&1'`,
+    // Start the injection proxy (dev server → +selection script) and wait for
+    // it to listen, then point railgate at it instead of the dev server so the
+    // "select element" tool works in sandbox previews.
+    `tmux new-session -d -s inject 'TARGET_PORT=${port} PROXY_PORT=${INJECT_PROXY_PORT} node ${INJECT_PROXY_PATH} > /tmp/inject.log 2>&1'`,
+    `for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/${INJECT_PROXY_PORT}) 2>/dev/null && break; sleep 1; done`,
+    `tmux new-session -d -s railgate 'railgate http ${INJECT_PROXY_PORT} -r ${relay} -t ${token} --subdomain ${subdomain} --force > /tmp/railgate.log 2>&1'`,
     // Wait for railgate to register the tunnel with the relay before we report ready.
     `for i in $(seq 1 30); do grep -q 'tunnel active' /tmp/railgate.log 2>/dev/null && break; sleep 1; done`,
   ].join('\n');
