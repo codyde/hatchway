@@ -165,7 +165,12 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
     installCommand,
     'tmux kill-server 2>/dev/null || true',
     `tmux new-session -d -s dev 'cd ${WORKSPACE} && PORT=${port} HOST=0.0.0.0 ${runCommand} > /tmp/dev.log 2>&1'`,
+    // Wait for the dev server to actually listen before exposing it, so the
+    // first request through the tunnel doesn't hit a not-yet-ready server.
+    `for i in $(seq 1 90); do (echo > /dev/tcp/127.0.0.1/${port}) 2>/dev/null && break; sleep 1; done`,
     `tmux new-session -d -s railgate 'railgate http ${port} -r ${relay} -t ${token} --subdomain ${subdomain} --force > /tmp/railgate.log 2>&1'`,
+    // Wait for railgate to register the tunnel with the relay before we report ready.
+    `for i in $(seq 1 30); do grep -q 'tunnel active' /tmp/railgate.log 2>/dev/null && break; sleep 1; done`,
   ].join('\n');
 
   await execOk(sandbox, `bash -lc ${shQuote(script)}`, 900);
