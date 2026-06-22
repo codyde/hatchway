@@ -325,6 +325,19 @@ export default function PreviewPanel({
   // - Remote frontend without tunnel: Use proxy (will wait for tunnel)
   // - Remote frontend with tunnel: Use tunnel directly (different networks)
 
+  // Sandbox projects run entirely in a Railway sandbox and are ONLY reachable
+  // via the railgate tunnel — there is no local dev server, so we must never
+  // fall back to a localhost URL for them (that was showing localhost after a
+  // stop/restart while the sandbox re-synced and the tunnel reconnected).
+  const isSandboxProject = (currentProject?.executionMode ?? 'local') === 'sandbox';
+  const resolvedTunnelUrl = verifiedTunnelUrl || currentProject?.tunnelUrl || '';
+  const localhostUrl = actualPort ? `http://localhost:${actualPort}` : '';
+  // Real URL to copy/open: tunnel always wins; localhost only for non-sandbox.
+  const externalUrl = resolvedTunnelUrl || (isSandboxProject ? '' : localhostUrl);
+  // What the URL bar shows: a pending label for a sandbox still bringing its
+  // tunnel up, instead of a misleading localhost address.
+  const displayUrlLabel = externalUrl || (isSandboxProject ? 'Starting sandbox preview…' : localhostUrl);
+
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
@@ -367,8 +380,9 @@ export default function PreviewPanel({
   }, [isBuildActive, previewUrl, handleRefresh]);
 
   const handleCopyUrl = async () => {
-    // Copy the actual URL - prefer tunnel if available, otherwise localhost
-    const url = verifiedTunnelUrl || currentProject?.tunnelUrl || `http://localhost:${actualPort}`;
+    // Copy the externally-reachable URL (tunnel, or localhost for non-sandbox).
+    const url = externalUrl;
+    if (!url) return;
 
     try {
       await navigator.clipboard.writeText(url);
@@ -558,7 +572,7 @@ export default function PreviewPanel({
                         : 'bg-[#92DD00] shadow-[#92DD00]/50'
                     }`}></div>
                     <span className="text-xs font-mono text-muted-foreground truncate flex-1">
-                      {verifiedTunnelUrl || currentProject?.tunnelUrl || `http://localhost:${actualPort}`}
+                      {displayUrlLabel}
                     </span>
                     <button
                       onClick={handleCopyUrl}
@@ -575,7 +589,7 @@ export default function PreviewPanel({
                 </HoverCardTrigger>
                 <HoverCardContent className="w-auto max-w-xl bg-popover border-border" side="bottom">
                   <p className="text-xs font-mono text-popover-foreground break-all">
-                    {verifiedTunnelUrl || currentProject?.tunnelUrl || `http://localhost:${actualPort}`}
+                    {displayUrlLabel}
                   </p>
                 </HoverCardContent>
               </HoverCard>
@@ -630,8 +644,8 @@ export default function PreviewPanel({
                   </button>
                 )}
 
-                {/* Open Localhost */}
-                {actualPort && (
+                {/* Open Localhost — not applicable to sandbox projects (no local server) */}
+                {actualPort && !isSandboxProject && (
                   <button
                     onClick={() => window.open(`http://localhost:${actualPort}`, '_blank')}
                     className="p-1.5 rounded-md hover:bg-green-500/20 transition-all duration-200 group"

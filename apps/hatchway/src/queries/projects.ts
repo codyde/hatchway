@@ -17,6 +17,7 @@ export interface Project {
   devServerPort: number | null;
   devServerStatus: 'stopped' | 'starting' | 'running' | 'stopping' | 'restarting' | 'failed' | null;
   tunnelUrl: string | null;
+  executionMode: 'local' | 'sandbox' | null; // 'sandbox' → preview is only reachable via the railgate tunnel
   runnerId: string | null;
   runnerConnected: boolean; // Whether the project's runner is currently connected
   generationState: string | null;

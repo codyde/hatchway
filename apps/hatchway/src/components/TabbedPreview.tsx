@@ -79,7 +79,10 @@ const TabbedPreview = forwardRef<HTMLDivElement, TabbedPreviewProps>(({
   const { projects } = useProjects();
   const currentProject = projects.find(p => p.slug === selectedProject);
   const actualPort = currentProject?.devServerPort;
-  const previewUrl = currentProject?.tunnelUrl || (actualPort ? `http://localhost:${actualPort}` : null);
+  // Sandbox projects are only reachable via the railgate tunnel — never fall
+  // back to localhost for them (there is no local dev server).
+  const isSandboxProject = (currentProject?.executionMode ?? 'local') === 'sandbox';
+  const previewUrl = currentProject?.tunnelUrl || (actualPort && !isSandboxProject ? `http://localhost:${actualPort}` : null);
   const isServerRunning = currentProject?.devServerStatus === 'running';
 
   // Listen for global events to switch tabs
@@ -324,8 +327,8 @@ const TabbedPreview = forwardRef<HTMLDivElement, TabbedPreviewProps>(({
                     <TooltipContent side="bottom">Open Tunnel URL</TooltipContent>
                   </Tooltip>
                 )}
-                {/* Localhost link */}
-                {actualPort && (
+                {/* Localhost link — not applicable to sandbox projects (no local server) */}
+                {actualPort && !isSandboxProject && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
