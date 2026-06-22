@@ -92,8 +92,19 @@ const server = http.createServer((req, res) => {
     }
   );
   upstream.on('error', () => {
-    if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' });
-    res.end('inject-proxy upstream error');
+    if (res.headersSent) { try { res.end(); } catch (e) {} return; }
+    // Dev server not accepting connections yet (still compiling/binding). For a
+    // top-level HTML navigation, serve an auto-refreshing splash so the preview
+    // recovers on its own instead of showing a hard "upstream error". Other
+    // requests (assets/XHR) just get a 503 the page will retry.
+    var accept = String(req.headers['accept'] || '');
+    if (req.method === 'GET' && accept.indexOf('text/html') !== -1) {
+      res.writeHead(503, { 'content-type': 'text/html', 'retry-after': '2', 'cache-control': 'no-store' });
+      res.end('<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="2"><title>Starting preview…</title></head><body style="margin:0;font-family:system-ui,sans-serif;background:#0b0b0f;color:#9aa0b0;display:flex;align-items:center;justify-content:center;height:100vh"><div style="text-align:center"><div style="font-size:14px;opacity:.8">Starting preview…</div><div style="font-size:12px;opacity:.5;margin-top:8px">the dev server is still warming up</div></div></body></html>');
+    } else {
+      res.writeHead(503, { 'content-type': 'text/plain', 'retry-after': '2' });
+      res.end('dev server warming up');
+    }
   });
   req.pipe(upstream);
 });

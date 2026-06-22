@@ -185,10 +185,18 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
     installCommand,
     // Restart only the dev server with the freshly-synced code.
     'tmux kill-session -t dev 2>/dev/null || true',
-    `tmux new-session -d -s dev 'cd ${WORKSPACE} && PORT=${port} HOST=0.0.0.0 ${runCommand} > /tmp/dev.log 2>&1'`,
+    // Vite/Astro IGNORE the PORT env var (they only honor --port), so pass the
+    // port + host as CLI args forwarded through the npm script (`-- …`). Keeping
+    // PORT/HOST env too is harmless and helps frameworks that do read them
+    // (e.g. Next). Without --port a non-default port silently breaks: the dev
+    // server binds its own default and nothing can reach it.
+    `tmux new-session -d -s dev 'cd ${WORKSPACE} && PORT=${port} HOST=0.0.0.0 ${runCommand} -- --host 0.0.0.0 --port ${port} > /tmp/dev.log 2>&1'`,
     // Wait for the dev server to actually listen before reporting ready, so the
     // first request through the tunnel doesn't hit a not-yet-ready server.
     `for i in $(seq 1 90); do (echo > /dev/tcp/127.0.0.1/${port}) 2>/dev/null && break; sleep 1; done`,
+    // Fail loudly (with the dev log) if it never bound — otherwise the sync
+    // "succeeds" but the preview only ever serves proxy errors.
+    `(echo > /dev/tcp/127.0.0.1/${port}) 2>/dev/null || { echo "[sandbox] dev server never bound to port ${port} within 90s — dev.log tail:"; tail -n 80 /tmp/dev.log 2>/dev/null; exit 1; }`,
     // Injection proxy (dev server → +selection script). Survives follow-ups;
     // railgate points at it, not the dev server, so the "select element" tool
     // works and the tunnel target port never changes.
@@ -200,6 +208,9 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
     // Wait for railgate to register the tunnel with the relay before we report
     // ready (already-present 'tunnel active' from a prior run matches at once).
     `for i in $(seq 1 30); do grep -q 'tunnel active' /tmp/railgate.log 2>/dev/null && break; sleep 1; done`,
+    // Surface the railgate log if the tunnel never came up (non-fatal — the
+    // preview URL is still returned, but this tells us why it isn't reachable).
+    `grep -q 'tunnel active' /tmp/railgate.log 2>/dev/null || { echo "[sandbox] railgate never reported 'tunnel active' within 30s — railgate.log tail:"; tail -n 40 /tmp/railgate.log 2>/dev/null; }`,
   ].join('\n');
 
   await execOk(sandbox, `bash -lc ${shQuote(script)}`, 900);
