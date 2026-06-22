@@ -249,10 +249,14 @@ export function createNativeClaudeQuery(
       // Use preset tools from Claude Code
       tools: { type: 'preset', preset: 'claude_code' },
       // The claude_code preset now ships built-in task tools (TaskCreate/Update/
-      // List). The agent reaches for those instead of TodoWrite — but the
-      // Hatchway UI renders progress ONLY from TodoWrite, so the checklist
-      // vanished and builds looked stuck in "analyzing". Disallow the task tools
-      // so the agent uses TodoWrite (which the todo-workflow skill mandates).
+      // List) AND defers TodoWrite behind tool search. The agent reached for the
+      // task tools (which the Hatchway UI doesn't render) and, when those were
+      // disallowed, couldn't even find TodoWrite (3 failed ToolSearches) → no
+      // checklist, stuck "analyzing". Fix: SURFACE TodoWrite as a non-deferred,
+      // always-available tool (allowedTools is additive, not restrictive) AND
+      // disallow the task tools — so the agent reliably uses TodoWrite, which the
+      // UI renders and the todo-workflow skill mandates.
+      allowedTools: ['TodoWrite'],
       disallowedTools: ['TaskCreate', 'TaskUpdate', 'TaskList'],
       // Pass abort controller for cancellation support
       // NOTE: There is a known bug in the Claude Agent SDK where AbortController
