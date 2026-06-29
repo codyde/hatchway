@@ -12,7 +12,7 @@ import {
 
 export type ExecutionMode = 'local' | 'sandbox';
 
-export const DEFAULT_EXECUTION_MODE: ExecutionMode = 'local';
+export const DEFAULT_EXECUTION_MODE: ExecutionMode = 'sandbox';
 
 interface ExecutionModeContextValue {
   executionMode: ExecutionMode;
