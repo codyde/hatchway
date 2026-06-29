@@ -29,7 +29,7 @@ export function ConnectStep({ runnerKey, onNext, onBack, onSkip }: ConnectStepPr
   
   // Build the command based on options
   const baseCommand = useOAuthFlow
-    ? "hatchway runner"
+    ? "npx @hatchway/cli runner"
     : `hatchway runner --secret ${runnerKey}`;
   const commandWithId = runnerId.trim() 
     ? `${baseCommand} --runner-id ${runnerId.trim()}`
@@ -225,7 +225,7 @@ export function ConnectStep({ runnerKey, onNext, onBack, onSkip }: ConnectStepPr
                   <li>Check that the CLI installed successfully</li>
                   {useOAuthFlow && <li>Complete the sign-in in your browser</li>}
                   <li>Ensure you have an internet connection</li>
-                  <li>Try running <code className="px-1 bg-black/30 rounded">hatchway --version</code> to verify installation</li>
+                  <li>Try running <code className="px-1 bg-black/30 rounded">npx @hatchway/cli --version</code> to verify it works</li>
                 </ul>
               </div>
             </div>
