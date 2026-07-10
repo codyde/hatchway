@@ -180,19 +180,6 @@ export const TAG_DEFINITIONS: TagDefinition[] = [
         maxSelections: 1,
         options: [
           {
-            value: 'sentry',
-            label: 'Sentry',
-            description: 'Error monitoring and performance - vibrant purple and pink',
-            logo: '/logos/sentry.svg',
-            values: {
-              primaryColor: '#9D58BF',
-              secondaryColor: '#FF708C',
-              accentColor: '#FF9838',
-              neutralLight: '#F0ECF3',
-              neutralDark: '#2B2233'
-            }
-          },
-          {
             value: 'stripe',
             label: 'Stripe',
             description: 'Modern payments aesthetic',

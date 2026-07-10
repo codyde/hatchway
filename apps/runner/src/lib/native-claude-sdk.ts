@@ -17,7 +17,6 @@
 import { query, type SDKMessage, type Options } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync, mkdirSync } from 'node:fs';
 import { createProjectScopedPermissionHandler } from './permissions/project-scoped-handler.js';
-import { getPlatformPluginDir } from './skills.js';
 import {
   CLAUDE_SYSTEM_PROMPT,
   type ClaudeModelId,
@@ -27,7 +26,7 @@ import {
 // Debug logging helper - suppressed in TUI mode (SILENT_MODE=1)
 const debugLog = (message: string) => {
   if (process.env.SILENT_MODE !== '1' && process.env.DEBUG_BUILD === '1') {
-    debugLog(message);
+    process.stderr.write(message);
   }
 };
 
@@ -60,6 +59,16 @@ interface TransformedMessage {
   usage?: unknown;
   subtype?: string;
   session_id?: string;
+  metrics?: {
+    numTurns?: number;
+    durationMs?: number;
+    durationApiMs?: number;
+    totalCostUsd?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+  };
 }
 
 /**
@@ -129,12 +138,35 @@ function transformSDKMessage(sdkMessage: SDKMessage): TransformedMessage | null 
 
     case 'result': {
       // Final result message with usage stats
+      const resultMessage = sdkMessage as typeof sdkMessage & {
+        num_turns?: number;
+        duration_ms?: number;
+        duration_api_ms?: number;
+        total_cost_usd?: number;
+        usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_read_input_tokens?: number;
+          cache_creation_input_tokens?: number;
+        };
+      };
+
       return {
         type: 'result',
         result: sdkMessage.subtype === 'success' ? sdkMessage.result : undefined,
         usage: sdkMessage.usage,
         subtype: sdkMessage.subtype,
         session_id: sdkMessage.session_id,
+        metrics: {
+          numTurns: resultMessage.num_turns,
+          durationMs: resultMessage.duration_ms,
+          durationApiMs: resultMessage.duration_api_ms,
+          totalCostUsd: resultMessage.total_cost_usd,
+          inputTokens: resultMessage.usage?.input_tokens,
+          outputTokens: resultMessage.usage?.output_tokens,
+          cacheReadInputTokens: resultMessage.usage?.cache_read_input_tokens,
+          cacheCreationInputTokens: resultMessage.usage?.cache_creation_input_tokens,
+        },
       };
     }
 
@@ -206,13 +238,6 @@ export function createNativeClaudeQuery(
       console.log(`[native-sdk] Creating working directory: ${workingDirectory}`);
       mkdirSync(workingDirectory, { recursive: true });
     }
-    
-    // Platform skills are packaged as a local plugin for SDK discovery.
-    const platformPluginDir = getPlatformPluginDir();
-    const platformPlugins = platformPluginDir
-      ? [{ type: 'local' as const, path: platformPluginDir }]
-      : [];
-
     // Check for multi-modal content
     const hasImages = messageParts?.some(p => p.type === 'image');
     if (hasImages) {
@@ -236,7 +261,6 @@ export function createNativeClaudeQuery(
       allowDangerouslySkipPermissions: true, // Required for bypassPermissions
       maxTurns: 100,
       additionalDirectories: [workingDirectory],
-      plugins: platformPlugins,
       canUseTool: createProjectScopedPermissionHandler(workingDirectory),
       includePartialMessages: false, // We don't need streaming deltas
       settingSources: ['user', 'project'],
@@ -246,19 +270,17 @@ export function createNativeClaudeQuery(
       // loaded from ~/.claude.json — otherwise every build inherits the user's
       // global MCP fleet (e.g. a `railway mcp` stdio server), which adds
       // startup cost and an unnecessary, stall-prone tool surface the build
-      // never needs. Hatchway delivers its capabilities via the platform
-      // plugin's skills, not MCP, so the build wants zero MCP servers.
+      // never needs. Hatchway's essential build policy is already included in
+      // the system prompt, so the build wants zero MCP servers.
       mcpServers: {},
       env: {
         ...process.env,
         CLAUDE_CODE_MAX_OUTPUT_TOKENS: process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS ?? '64000',
-        // Enable SDK debug logging for skill discovery diagnostics
+        // Enable SDK debug logging only when explicitly diagnosing the SDK.
         ...(process.env.DEBUG_SKILLS === '1' ? { DEBUG_CLAUDE_AGENT_SDK: '1' } : {}),
       },
-      // Use preset tools from Claude Code. The preset's task tracking is now the
-      // built-in Task* tools (TodoWrite is deferred and not reliably loadable);
-      // the runner translates Task* tool calls into TodoWrite-shaped progress
-      // events the UI renders (see translateTaskToolsToTodos).
+      // Use Claude Code's file, search, shell, and web tools. Progress is sent
+      // through the inline TODO_WRITE protocol rather than extra task-tool turns.
       tools: { type: 'preset', preset: 'claude_code' },
       // Pass abort controller for cancellation support
       // NOTE: There is a known bug in the Claude Agent SDK where AbortController
@@ -267,16 +289,12 @@ export function createNativeClaudeQuery(
       // See: https://github.com/anthropics/claude-code/issues/2970
       // See: https://github.com/anthropics/claude-agent-sdk-typescript/issues/46
       abortController,
-      // Capture SDK internal stderr (suppressed in TUI mode). We surface two
-      // classes of line: skill-discovery diagnostics, and anything that signals
-      // the SDK is stalling/retrying — rate limits (429), overloaded/timeout
-      // errors, and retry/backoff notices. Without the latter, a multi-minute
-      // model stall (e.g. subscription rate-limit backoff) shows up as a silent
-      // gap in the build log with no explanation.
+      // Capture SDK internal stderr (suppressed in TUI mode). Surface anything
+      // that signals the SDK is stalling/retrying so a multi-minute model stall
+      // does not appear as a silent gap in the build log.
       stderr: (data: string) => {
         if (process.env.SILENT_MODE === '1') return;
         const lower = data.toLowerCase();
-        const isSkillDiag = lower.includes('skill') || data.includes('add-dir') || data.includes('additional');
         const isStallSignal =
           lower.includes('rate limit') ||
           lower.includes('rate_limit') ||
@@ -289,16 +307,13 @@ export function createNativeClaudeQuery(
           lower.includes('backoff') ||
           lower.includes('econnreset') ||
           lower.includes('usage limit');
-        if (isSkillDiag || isStallSignal) {
+        if (isStallSignal || process.env.DEBUG_SKILLS === '1') {
           process.stderr.write(`[native-sdk:stderr] ${data}\n`);
         }
       },
     };
 
     debugLog('[runner] [native-sdk] 🚀 Starting SDK query stream\n');
-    if (process.env.SILENT_MODE !== '1') {
-      process.stderr.write(`[native-sdk] plugins: ${JSON.stringify(platformPlugins.map(p => p.path))}\n`);
-    }
 
     let messageCount = 0;
     let toolCallCount = 0;
@@ -355,7 +370,7 @@ export function createNativeClaudeQuery(
           yield transformed;
         }
 
-        // Capture SDK init message — this is the authoritative source for skill discovery
+        // SDK init diagnostics are useful when explicitly troubleshooting startup.
         if (sdkMessage.type === 'system' && sdkMessage.subtype === 'init') {
           const initMsg = sdkMessage as {
             skills?: string[];
@@ -368,7 +383,7 @@ export function createNativeClaudeQuery(
           const loadedPlugins = initMsg.plugins ?? [];
           const toolCount = (initMsg.tools ?? []).length;
 
-          if (process.env.SILENT_MODE !== '1') {
+          if (process.env.SILENT_MODE !== '1' && process.env.DEBUG_SKILLS === '1') {
             process.stderr.write(`[native-sdk] SDK init — skills: [${discoveredSkills.join(', ')}] (${discoveredSkills.length})\n`);
             process.stderr.write(`[native-sdk] SDK init — plugins: ${JSON.stringify(loadedPlugins)}\n`);
             process.stderr.write(`[native-sdk] SDK init — tools: ${toolCount} loaded\n`);
@@ -376,10 +391,10 @@ export function createNativeClaudeQuery(
 
         }
 
-        // Capture tool_use_summary messages — these indicate skill content loading
+        // Capture tool summaries only during explicit SDK diagnostics.
         if (sdkMessage.type === 'tool_use_summary') {
           const summaryMsg = sdkMessage as { summary?: string; preceding_tool_use_ids?: string[] };
-          if (process.env.SILENT_MODE !== '1') {
+          if (process.env.SILENT_MODE !== '1' && process.env.DEBUG_SKILLS === '1') {
             process.stderr.write(`[native-sdk] Tool use summary: ${summaryMsg.summary}\n`);
           }
         }

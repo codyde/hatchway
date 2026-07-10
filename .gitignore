@@ -52,9 +52,6 @@ next-env.d.ts
 # turborepo
 .turbo
 
-# Sentry Config File
-.env.sentry-build-plugin
-
 # Log files
 logs/
 nox/

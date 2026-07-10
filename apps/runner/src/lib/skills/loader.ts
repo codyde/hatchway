@@ -3,8 +3,8 @@
  *
  * Skills are modular pieces of procedural knowledge that get conditionally
  * composed into the system prompt based on agent type and project context.
- * This is the fallback path for non-Claude agents (codex, opencode, droid).
- * Claude agents use SDK-native plugin discovery instead.
+ * This is the compatibility path for non-Claude agents (codex, opencode,
+ * droid). Claude receives the essential workflow in its compact base prompt.
  */
 
 import type { AgentId } from '@hatchway/agent-core/types/agent';

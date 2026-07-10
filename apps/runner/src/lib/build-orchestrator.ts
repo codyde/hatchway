@@ -15,6 +15,15 @@ import { buildLogger } from '@hatchway/agent-core/lib/logging/build-logger';
 import type { DesignPreferences } from '@hatchway/agent-core/types/design';
 import type { AppliedTag } from '@hatchway/agent-core/types/tags';
 import { composeSkills } from './skills/loader.js';
+import {
+  dependencyGuidance,
+  inspectDependencyState,
+  type DependencyStateSnapshot,
+} from './dependency-state.js';
+
+function templateManifestCacheKey(template: Template): string {
+  return `${template.id}:${template.repository}:${template.branch}`;
+}
 
 export interface MessagePart {
   type: string;
@@ -62,6 +71,7 @@ export interface OrchestrationResult {
   systemPrompt: string;
   fullPrompt: string;
   projectPath: string;
+  dependencyState: DependencyStateSnapshot;
   templateEvents: Array<{type: string; data: Record<string, unknown>}>; // Events to send to UI
   projectMetadata?: {
     path: string;
@@ -203,7 +213,9 @@ export async function orchestrateBuild(context: BuildContext): Promise<Orchestra
       );
 
       const downloadedPath = await downloadTemplate(selectedTemplate, workingDirectory);
-      fileTree = await getProjectFileTree(downloadedPath);
+      fileTree = await getProjectFileTree(downloadedPath, {
+        cacheKey: templateManifestCacheKey(selectedTemplate),
+      });
 
       buildLogger.orchestrator.templateDownloaded(
         selectedTemplate.name,
@@ -271,7 +283,9 @@ export async function orchestrateBuild(context: BuildContext): Promise<Orchestra
       );
 
       const downloadedPath = await downloadTemplate(selectedTemplate, workingDirectory);
-      fileTree = await getProjectFileTree(downloadedPath);
+      fileTree = await getProjectFileTree(downloadedPath, {
+        cacheKey: templateManifestCacheKey(selectedTemplate),
+      });
 
       buildLogger.orchestrator.templateDownloaded(
         selectedTemplate.name,
@@ -367,6 +381,8 @@ export async function orchestrateBuild(context: BuildContext): Promise<Orchestra
     });
   }
 
+  const dependencyState = await inspectDependencyState(workingDirectory);
+
   // Resolve working directory for agent (Codex uses parent dir for cloning)
   const resolvedWorkingDirectory = strategy.resolveWorkingDirectory
     ? strategy.resolveWorkingDirectory(strategyContext)
@@ -391,9 +407,8 @@ export async function orchestrateBuild(context: BuildContext): Promise<Orchestra
     conversationHistoryCount: conversationHistory?.length || 0,
   });
 
-  // For claude-code: platform skills are provisioned via the SDK's native skill
-  // discovery (additionalDirectories + skills option). The SDK loads descriptions
-  // into context and full content on-demand. No system prompt injection needed.
+  // Claude's essential workflow is included in its compact base prompt. Other
+  // agents still receive the existing composed skill text as a compatibility path.
   // For other agents (codex, opencode, droid): skills are injected into the system prompt.
   const hasDesignTags = !!(tags && tags.some(t => t.key === 'brand' || t.key === 'framework'));
   const useNativeSkills = agent === 'claude-code';
@@ -404,7 +419,11 @@ export async function orchestrateBuild(context: BuildContext): Promise<Orchestra
   });
 
   const systemPromptSections = await strategy.buildSystemPromptSections(strategyContext);
-  const systemPrompt = [...skillSections, ...systemPromptSections].join('\n\n');
+  const systemPrompt = [
+    ...skillSections,
+    ...systemPromptSections,
+    dependencyGuidance(dependencyState),
+  ].join('\n\n');
 
   buildLogger.orchestrator.systemPromptGenerated(systemPrompt.length);
   
@@ -430,6 +449,7 @@ export async function orchestrateBuild(context: BuildContext): Promise<Orchestra
     systemPrompt,
     fullPrompt,
     projectPath: resolvedWorkingDirectory,
+    dependencyState,
     templateEvents,
     projectMetadata,
   };
@@ -520,13 +540,13 @@ After cloning:
 - Location: ${projectPath}
 - Framework: ${template.tech.framework}
 
-Project structure snapshot:
+Project manifest (bounded file tree and key configuration/source files):
 ${fileTree}
 
-Before customizing, run:
-1. \`cd ${projectName} && npm install\`
-2. Review the scaffold to understand existing routes, components, and configs.
-3. Implement the requested features directly inside this template—do **not** scaffold a fresh project.
+Build workflow:
+1. Review the scaffold to understand existing routes, components, and configs.
+2. Implement the requested features and finish dependency-manifest edits—do **not** scaffold a fresh project.
+3. Install dependencies once using the dependency-state guidance below, then verify the build.
 
 Template notes:
 ${template.ai?.systemPromptAddition || 'No additional template notes provided.'}
@@ -544,7 +564,7 @@ Key commands:
 - Project location: ${projectPath}
 - Objective: update the existing codebase to satisfy the latest request.
 
-Current structure snapshot:
+Current project manifest (bounded file tree and key configuration/source files):
 ${fileTree}
 
 Review the relevant files, confirm dependencies, and plan how your changes integrate without breaking current behavior.`);
@@ -556,7 +576,7 @@ Review the relevant files, confirm dependencies, and plan how your changes integ
 - Avoid absolute paths that include user directories (e.g., \`/Users/.../${projectName}\`).`);
 
   sections.push(`## Build & Runtime Expectations
-- Manage dependencies with npm: \`cd ${projectName} && npm install\`.
+- After all code and dependency-manifest edits, install once. For npm use: \`cd ${projectName} && npm install --prefer-offline --no-audit --no-fund\`.
 - After completing all build tasks, start the dev server to test the application.
 - Verify the server starts successfully and check for any errors.
 - After testing is complete, stop the dev server (Ctrl+C) - do NOT leave it running.

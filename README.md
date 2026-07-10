@@ -41,7 +41,7 @@ hatchway runner
 ```
 
 This will:
-1. Open your browser for authentication (GitHub or Sentry)
+1. Open your browser for GitHub authentication
 2. Automatically create a runner token
 3. Connect your machine to hatchway.sh
 
@@ -134,7 +134,7 @@ Use the tag selector in the web UI to configure your build:
 | `@model` | AI model to use | `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-6`, `gpt-5.2-codex` |
 | `@framework` | Project framework | Next.js, Vite, TanStack |
 | `@runner` | Which runner to use | Your connected runners |
-| `@brand` | Design theme | Sentry, Stripe, Vercel, and more |
+| `@brand` | Design theme | Stripe, Vercel, and more |
 
 ## CLI Commands
 

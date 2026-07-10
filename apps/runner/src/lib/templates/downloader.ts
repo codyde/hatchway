@@ -4,6 +4,7 @@ import type { Template } from './config.js';
 import { join } from 'node:path';
 import { getWorkspaceRoot } from '../workspace.js';
 import { simpleGit } from 'simple-git';
+import { getProjectManifest, type ProjectManifestOptions } from './manifest.js';
 
 /**
  * Download template from GitHub using degit
@@ -290,10 +291,11 @@ async function ensureVitePortConfig(projectPath: string): Promise<void> {
  * Get project file tree (for AI context)
  * Shows directory structure to help AI understand what's included
  */
-export async function getProjectFileTree(projectPath: string): Promise<string> {
-  // Simplified version - just return the path
-  // TODO: Implement tree generation without execAsync
-  return `Project path: ${projectPath}`;
+export async function getProjectFileTree(
+  projectPath: string,
+  options: ProjectManifestOptions = {}
+): Promise<string> {
+  return getProjectManifest(projectPath, options);
 }
 
 /**

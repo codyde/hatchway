@@ -53,17 +53,6 @@ interface ThemeInfo {
 }
 
 const THEMES: Record<ThemeName, ThemeInfo> = {
-  sentry: {
-    name: 'sentry',
-    label: 'Sentry',
-    description: 'Purple-pink gradient',
-    colors: { 
-      primary: '#a855f7', 
-      secondary: '#ec4899',
-      accent: '#c084fc',
-      muted: '#7c3aed',
-    },
-  },
   ocean: {
     name: 'ocean',
     label: 'Ocean',
@@ -110,7 +99,7 @@ const THEMES: Record<ThemeName, ThemeInfo> = {
   },
 };
 
-const THEME_ORDER: ThemeName[] = ['sentry', 'ocean', 'ember', 'forest', 'noir'];
+const THEME_ORDER: ThemeName[] = ['ocean', 'ember', 'forest', 'noir'];
 
 interface DashboardProps {
   serviceManager: ServiceManager;
@@ -337,9 +326,10 @@ export function Dashboard({ serviceManager, apiUrl, webPort, logFilePath }: Dash
   const [fullLogSearchQuery, setFullLogSearchQuery] = useState('');
   const [fullLogScrollOffset, setFullLogScrollOffset] = useState(0);
   
-  // Theme state - load from config, default to 'sentry'
+  // Theme state - migrate removed/unknown saved themes to the default.
   const savedTheme = configManager.get('ui')?.theme as ThemeName | undefined;
-  const [selectedTheme, setSelectedTheme] = useState<ThemeName>(savedTheme || 'sentry');
+  const initialTheme = savedTheme && savedTheme in THEMES ? savedTheme : 'ocean';
+  const [selectedTheme, setSelectedTheme] = useState<ThemeName>(initialTheme);
   const [previewTheme, setPreviewTheme] = useState<ThemeName | null>(null);
   const [themeBeforePreview, setThemeBeforePreview] = useState<ThemeName | null>(null);
   

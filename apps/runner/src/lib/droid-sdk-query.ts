@@ -11,7 +11,6 @@
 import { DroidSession } from '@hatchway/droid-sdk';
 import type { DroidEvent, DroidSessionOptions } from '@hatchway/droid-sdk';
 import { existsSync, mkdirSync } from 'node:fs';
-import { ensureProjectSkills } from './skills.js';
 import { CLAUDE_SYSTEM_PROMPT } from '@hatchway/agent-core';
 
 const debugLog = (message: string) => {
@@ -239,9 +238,6 @@ export function createDroidQuery(modelId?: string) {
       console.log(`[droid-sdk] Creating working directory: ${workingDirectory}`);
       mkdirSync(workingDirectory, { recursive: true });
     }
-
-    // Ensure project has skills
-    ensureProjectSkills(workingDirectory);
 
     // Configure DroidSession options
     const sessionOptions: DroidSessionOptions = {

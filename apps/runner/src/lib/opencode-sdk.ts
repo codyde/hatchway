@@ -19,7 +19,6 @@ import {
   normalizeModelId,
   parseModelId,
 } from '@hatchway/agent-core';
-import { ensureProjectSkills } from './skills.js';
 
 // Debug logging helper
 const debugLog = (message: string) => {
@@ -250,10 +249,6 @@ export function createOpenCodeQuery(
       console.log(`[opencode-sdk] Creating working directory: ${workingDirectory}`);
       mkdirSync(workingDirectory, { recursive: true });
     }
-    
-    // Ensure project has skills
-    ensureProjectSkills(workingDirectory);
-
     const baseUrl = getOpenCodeUrl();
     const authToken = getAuthToken();
     
