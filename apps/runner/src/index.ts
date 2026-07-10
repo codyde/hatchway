@@ -41,8 +41,6 @@ import { transformCodexStream } from "./lib/codex-sdk-adapter.js";
 
 import { orchestrateBuild } from "./lib/build-orchestrator.js";
 import { analyzeProject } from "./lib/project-analyzer.js";
-import { tunnelManager } from "./lib/tunnel/manager.js";
-import { waitForPort } from "./lib/port-checker.js";
 import { createProjectScopedPermissionHandler } from "./lib/permissions/project-scoped-handler.js";
 import { hmrProxyManager } from "./lib/hmr-proxy-manager.js";
 import { ensureProjectSkills } from "./lib/skills.js";
@@ -978,8 +976,6 @@ export async function startRunner(options: RunnerOptions = {}) {
     );
     setPortCheckerSilent(true);
 
-    // Set silent mode on tunnel manager globally
-    tunnelManager.setSilent(true);
   }
 
   // Note: Port cleanup is handled by the web app, not the runner
@@ -1479,11 +1475,6 @@ export async function startRunner(options: RunnerOptions = {}) {
       logger.devServer({ port: command.payload.preferredPort || 3000, status: 'starting' });
       debugLog(`Working directory: ${command.payload.workingDirectory}`);
       debugLog(`Run command: ${command.payload.runCommand}`);
-    } else if (
-      command.type === "start-tunnel" ||
-      command.type === "stop-tunnel"
-    ) {
-      debugLog(`Port: ${command.payload.port}`);
     }
 
     sendEvent({
@@ -1558,7 +1549,6 @@ export async function startRunner(options: RunnerOptions = {}) {
             log(`🧹 Stopping any existing process for project ${command.projectId}...`);
             const { stopDevServer } = await import('./lib/process-manager.js');
             const wasStopped = await stopDevServer(command.projectId, {
-              tunnelManager,
               reason: 'restart',
               port: allocatedPort,
             });
@@ -1738,12 +1728,6 @@ export async function startRunner(options: RunnerOptions = {}) {
 
           // Handle process exit
           devProcess.emitter.on("exit", async ({ code, signal, state, failureReason, stderr }) => {
-            // Close tunnel if one exists for this port
-            if (allocatedPort) {
-              log(`🔗 Closing tunnel for port ${allocatedPort}`);
-              await tunnelManager.closeTunnel(allocatedPort);
-            }
-
             sendEvent({
               type: "process-exited",
               ...buildEventBase(command.projectId, command.id),
@@ -1825,11 +1809,6 @@ export async function startRunner(options: RunnerOptions = {}) {
               });
 
               retryProcess.emitter.on("exit", async ({ code, signal, state, failureReason }) => {
-                if (allocatedPort) {
-                  log(`🔗 Closing tunnel for port ${allocatedPort}`);
-                  await tunnelManager.closeTunnel(allocatedPort);
-                }
-
                 sendEvent({
                   type: "process-exited",
                   ...buildEventBase(command.projectId, command.id),
@@ -1900,7 +1879,6 @@ export async function startRunner(options: RunnerOptions = {}) {
       case "stop-dev-server": {
         try {
           const stopped = await stopDevServer(command.projectId, {
-            tunnelManager,
             reason: 'manual'
           });
           
@@ -1927,75 +1905,6 @@ export async function startRunner(options: RunnerOptions = {}) {
         }
         break;
       }
-      case "start-tunnel": {
-        try {
-          const { port } = command.payload;
-          log(`🔗 Starting tunnel for port ${port}...`);
-
-          // Wait for the port to be ready before creating tunnel
-          log(`⏳ Waiting for port ${port} to be ready...`);
-          const isReady = await waitForPort(port, 15, 1000); // 15 retries, 1s apart = max 15s
-
-          if (!isReady) {
-            throw new Error(`Port ${port} is not ready or not accessible`);
-          }
-
-          // Ensure tunnel manager is in silent mode
-          tunnelManager.setSilent(isSilentMode);
-
-          // Create tunnel
-          const tunnelUrl = await tunnelManager.createTunnel(port);
-          logger.tunnel({ port, url: tunnelUrl, status: 'created' });
-
-          sendEvent({
-            type: "tunnel-created",
-            ...buildEventBase(command.projectId, command.id),
-            port,
-            tunnelUrl,
-          });
-        } catch (error) {
-          console.error("Failed to create tunnel:", error);
-
-          sendEvent({
-            type: "error",
-            ...buildEventBase(command.projectId, command.id),
-            error:
-              error instanceof Error
-                ? error.message
-                : "Failed to create tunnel",
-            stack: error instanceof Error ? error.stack : undefined,
-          });
-        }
-        break;
-      }
-      case "stop-tunnel": {
-        try {
-          const { port } = command.payload;
-          debugLog(`Stopping tunnel for port ${port}...`);
-
-          // Ensure tunnel manager is in silent mode
-          tunnelManager.setSilent(isSilentMode);
-
-          await tunnelManager.closeTunnel(port);
-          logger.tunnel({ port, status: 'closed' });
-
-          sendEvent({
-            type: "tunnel-closed",
-            ...buildEventBase(command.projectId, command.id),
-            port,
-          });
-        } catch (error) {
-          console.error("Failed to close tunnel:", error);
-          sendEvent({
-            type: "error",
-            ...buildEventBase(command.projectId, command.id),
-            error:
-              error instanceof Error ? error.message : "Failed to close tunnel",
-            stack: error instanceof Error ? error.stack : undefined,
-          });
-        }
-        break;
-      }
       case "fetch-logs": {
         log("fetch-logs not yet implemented");
         sendEvent({
@@ -2016,7 +1925,6 @@ export async function startRunner(options: RunnerOptions = {}) {
 
           // First, stop any running dev server for this project to release file locks
           const wasStopped = await stopDevServer(command.projectId, {
-            tunnelManager,
             reason: 'deletion'
           });
           if (wasStopped) {
@@ -3420,14 +3328,9 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
       });
     }
 
-    // Stop all running dev servers and cleanup tunnels
+    // Stop all running dev servers
     const { stopAllDevServers } = await import('./lib/process-manager.js');
-
-    // Stop all dev server processes (this also handles tunnel cleanup per-process)
-    await stopAllDevServers(tunnelManager);
-
-    // Final cleanup of any remaining tunnels
-    await tunnelManager.closeAll();
+    await stopAllDevServers();
 
     log("shutdown complete");
   };

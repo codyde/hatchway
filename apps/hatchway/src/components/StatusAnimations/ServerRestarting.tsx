@@ -1,15 +1,14 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { RotateCcw, Server, Zap, CheckCircle2, XCircle, Wifi } from 'lucide-react';
+import { RotateCcw, Server, Zap, CheckCircle2, XCircle } from 'lucide-react';
 
-export type RestartPhase = 'stopping' | 'starting' | 'healthcheck' | 'tunnel' | 'ready' | 'failed';
+export type RestartPhase = 'stopping' | 'starting' | 'healthcheck' | 'ready' | 'failed';
 
 interface ServerRestartingProps {
   phase: RestartPhase;
   projectName?: string;
   port?: number;
-  hasTunnel?: boolean;
   onDismiss?: () => void;
 }
 
@@ -41,13 +40,6 @@ const phaseConfig: Record<RestartPhase, {
     color: 'text-blue-400',
     progressColor: 'from-yellow-400 to-blue-400',
   },
-  tunnel: {
-    icon: Wifi,
-    title: 'Creating Tunnel',
-    subtitle: 'Connecting to Cloudflare edge...',
-    color: 'text-cyan-400',
-    progressColor: 'from-blue-400 to-cyan-400',
-  },
   ready: {
     icon: CheckCircle2,
     title: 'Server Ready',
@@ -65,22 +57,17 @@ const phaseConfig: Record<RestartPhase, {
 };
 
 // Get all phases in order (excluding failed which is a terminal state)
-const phaseOrder: RestartPhase[] = ['stopping', 'starting', 'healthcheck', 'tunnel', 'ready'];
+const phaseOrder: RestartPhase[] = ['stopping', 'starting', 'healthcheck', 'ready'];
 
 export function ServerRestarting({ 
   phase, 
   projectName, 
   port,
-  hasTunnel = true,
   onDismiss 
 }: ServerRestartingProps) {
   const config = phaseConfig[phase];
   const Icon = config.icon;
-  
-  // Filter phases based on whether tunnel is needed
-  const activePhases = hasTunnel 
-    ? phaseOrder 
-    : phaseOrder.filter(p => p !== 'tunnel');
+  const activePhases = phaseOrder;
   
   const currentPhaseIndex = activePhases.indexOf(phase);
   const progress = phase === 'failed' 

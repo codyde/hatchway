@@ -564,12 +564,13 @@ Review the relevant files, confirm dependencies, and plan how your changes integ
 - After completing all build tasks, start the dev server to test the application.
 - Verify the server starts successfully and check for any errors.
 - After testing is complete, stop the dev server (Ctrl+C) - do NOT leave it running.
-- For Vite projects, ensure \`vite.config.*\` allows Cloudflare tunnels:
+- For Vite projects, ensure \`vite.config.*\` accepts the preview host:
 
 \`\`\`ts
 export default defineConfig({
   server: {
-    allowedHosts: ['.trycloudflare.com'],
+    host: true,
+    allowedHosts: true,
   },
 });
 \`\`\`

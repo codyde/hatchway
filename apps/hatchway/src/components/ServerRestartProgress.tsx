@@ -1,30 +1,26 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Loader2, Server, Wifi, WifiOff } from 'lucide-react';
+import { Loader2, Server, WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 interface ServerRestartProgressProps {
   projectName?: string;
   port?: number;
-  hasTunnel?: boolean;
 }
 
-type RestartPhase = 'stopping' | 'cleaning' | 'starting' | 'healthcheck' | 'tunnel' | 'complete';
+type RestartPhase = 'stopping' | 'cleaning' | 'starting' | 'healthcheck' | 'complete';
 
 export function ServerRestartProgress({ 
   projectName, 
   port,
-  hasTunnel = false 
 }: ServerRestartProgressProps) {
   const [phase, setPhase] = useState<RestartPhase>('stopping');
   const [dots, setDots] = useState('');
 
   // Simulate phase progression (in real usage, this would be driven by events)
   useEffect(() => {
-    const phases: RestartPhase[] = hasTunnel 
-      ? ['stopping', 'cleaning', 'starting', 'healthcheck', 'tunnel']
-      : ['stopping', 'cleaning', 'starting', 'healthcheck'];
+    const phases: RestartPhase[] = ['stopping', 'cleaning', 'starting', 'healthcheck'];
 
     let currentIndex = 0;
     const interval = setInterval(() => {
@@ -33,7 +29,7 @@ export function ServerRestartProgress({
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [hasTunnel]);
+  }, []);
 
   // Animated dots for loading effect
   useEffect(() => {
@@ -51,7 +47,7 @@ export function ServerRestartProgress({
     },
     cleaning: {
       icon: <WifiOff className="h-4 w-4" />,
-      text: 'Cleaning up port and tunnel',
+      text: 'Cleaning up port',
       color: 'text-yellow-400'
     },
     starting: {
@@ -63,11 +59,6 @@ export function ServerRestartProgress({
       icon: <Loader2 className="h-4 w-4 animate-spin" />,
       text: 'Running health check',
       color: 'text-theme-primary'
-    },
-    tunnel: {
-      icon: <Wifi className="h-4 w-4" />,
-      text: 'Recreating tunnel',
-      color: 'text-green-400'
     },
     complete: {
       icon: <Server className="h-4 w-4" />,
@@ -105,11 +96,10 @@ export function ServerRestartProgress({
             className="h-full progress-theme"
             initial={{ width: '0%' }}
             animate={{ 
-              width: phase === 'stopping' ? '20%' 
-                : phase === 'cleaning' ? '40%'
-                : phase === 'starting' ? '60%'
-                : phase === 'healthcheck' ? '80%'
-                : phase === 'tunnel' ? '90%'
+              width: phase === 'stopping' ? '25%' 
+                : phase === 'cleaning' ? '50%'
+                : phase === 'starting' ? '75%'
+                : phase === 'healthcheck' ? '90%'
                 : '100%'
             }}
             transition={{ duration: 0.5, ease: 'easeInOut' }}
@@ -142,10 +132,9 @@ export function ServerRestartProgress({
       <div className="mt-3 pt-3 border-t border-gray-800/50">
         <p className="text-xs text-gray-500 leading-relaxed">
           {phase === 'stopping' && 'Gracefully shutting down the dev server...'}
-          {phase === 'cleaning' && 'Killing processes on port and closing tunnel...'}
+          {phase === 'cleaning' && 'Killing processes on the port...'}
           {phase === 'starting' && 'Spawning new dev server process...'}
           {phase === 'healthcheck' && 'Verifying server is responding...'}
-          {phase === 'tunnel' && 'Creating new Cloudflare tunnel...'}
           {phase === 'complete' && 'Server is running and ready!'}
         </p>
       </div>

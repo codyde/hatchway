@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { Plus, Plug } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { TagBadge } from './TagBadge';
 import { TagDropdown } from './TagDropdown';
 import { AppliedTag } from '@hatchway/agent-core/types/tags';
@@ -128,31 +127,29 @@ export function TagInput({
 
         {/* Show Connect Runner button if no runners connected */}
         {!hasConnectedRunners ? (
-          <Button
-            variant="outline"
-            size="sm"
+          <button
+            type="button"
             onClick={() => setShowConnectWizard(true)}
-            className="h-7 px-3 font-mono text-xs border border-border bg-muted/50 hover:bg-muted hover:border-border text-foreground"
+            className="btn-add-tag-theme inline-flex items-center gap-1 px-2 py-1 border rounded text-sm font-mono"
           >
-            <Plug className="w-3 h-3 mr-1.5" />
+            <Plug className="w-3 h-3" />
             Connect a Runner
-          </Button>
+          </button>
         ) : (
-          /* Add tag button */
+          /* Add tag button — same shape as TagBadge, different color */
           <TagDropdown
             open={dropdownOpen}
             onOpenChange={setDropdownOpen}
             onSelectTag={handleAddTag}
             runnerOptions={runnerOptions}
           >
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-3 font-mono text-xs border-2 border-border bg-muted/50 hover:bg-muted hover:border-border text-foreground"
+            <button
+              type="button"
+              className="btn-add-tag-theme inline-flex items-center gap-1 px-2 py-1 border rounded text-sm font-mono"
             >
-              <Plus className="w-3 h-3 mr-1" />
+              <Plus className="w-3 h-3" />
               Add Tag
-            </Button>
+            </button>
           </TagDropdown>
         )}
       </div>

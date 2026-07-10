@@ -532,12 +532,11 @@ export async function stopDevServer(
   options?: {
     timeout?: number;
     reason?: string;
-    tunnelManager?: any; // TunnelManager instance
     port?: number;
     forceKillPort?: boolean; // If true, kill any process on the port
   }
 ): Promise<boolean> {
-  const { timeout = 10000, reason = 'manual', tunnelManager, port, forceKillPort = false } = options || {};
+  const { timeout = 10000, reason = 'manual', port, forceKillPort = false } = options || {};
   
   const devProcess = activeProcesses.get(projectId);
   if (!devProcess) {
@@ -558,24 +557,11 @@ export async function stopDevServer(
   devProcess.state = ProcessState.STOPPING;
   devProcess.stopReason = reason;
 
-  // Step 1: Close tunnel first (if tunnelManager and port provided)
-  const tunnelPort = port || devProcess.port;
-  if (tunnelManager && tunnelPort) {
-    try {
-      buildLogger.log('info', 'process-manager', `Closing tunnel for port ${tunnelPort}`, { port: tunnelPort, projectId });
-      await tunnelManager.closeTunnel(tunnelPort);
-      devProcess.tunnelUrl = undefined;
-    } catch (error) {
-      buildLogger.log('error', 'process-manager', 'Failed to close tunnel', { error: error instanceof Error ? error.message : String(error), projectId });
-      // Continue anyway - we still need to stop the process
-    }
-  }
-
-  // Step 2: Send SIGTERM for graceful shutdown
+  // Send SIGTERM for graceful shutdown
   buildLogger.log('info', 'process-manager', `Sending SIGTERM to PID ${devProcess.process.pid}`, { pid: devProcess.process.pid, projectId });
   devProcess.process.kill('SIGTERM');
 
-  // Step 3: Wait for exit with timeout
+  // Wait for exit with timeout
   const exitPromise = new Promise<void>((resolve) => {
     devProcess.emitter.once('exit', () => resolve());
   });
@@ -594,11 +580,12 @@ export async function stopDevServer(
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
-  // Step 5: Force kill port if requested (handles stuck processes)
-  if (forceKillPort && tunnelPort) {
+  // Force kill port if requested (handles stuck processes)
+  const killPort = port || devProcess.port;
+  if (forceKillPort && killPort) {
     const { killProcessOnPort } = await import('../cli/utils/process-killer.js');
-    buildLogger.log('info', 'process-manager', `Force killing any remaining process on port ${tunnelPort}`, { port: tunnelPort, projectId });
-    await killProcessOnPort(tunnelPort);
+    buildLogger.log('info', 'process-manager', `Force killing any remaining process on port ${killPort}`, { port: killPort, projectId });
+    await killProcessOnPort(killPort);
     // Wait for port to be released
     await new Promise(resolve => setTimeout(resolve, 500));
   }
@@ -832,14 +819,13 @@ export function getAllActiveProjectIds(): string[] {
 /**
  * Stop all running dev servers
  */
-export async function stopAllDevServers(tunnelManager?: any): Promise<void> {
+export async function stopAllDevServers(): Promise<void> {
   const projectIds = getAllActiveProjectIds();
   
   // Stop all processes in parallel
   await Promise.allSettled(
     projectIds.map(projectId => 
       stopDevServer(projectId, { 
-        tunnelManager,
         reason: 'shutdown' 
       })
     )
