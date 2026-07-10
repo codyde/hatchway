@@ -25,12 +25,8 @@ interface TabbedPreviewProps {
   projectId?: string | null;
   onStartServer?: () => void;
   onStopServer?: () => void;
-  onStartTunnel?: () => void;
-  onStopTunnel?: () => void;
   isStartingServer?: boolean;
   isStoppingServer?: boolean;
-  isStartingTunnel?: boolean;
-  isStoppingTunnel?: boolean;
   isBuildActive?: boolean;
   onPortDetected?: (port: number) => void;
   devicePreset?: 'desktop' | 'tablet' | 'mobile';
@@ -46,12 +42,8 @@ const TabbedPreview = forwardRef<HTMLDivElement, TabbedPreviewProps>(({
   projectId,
   onStartServer,
   onStopServer,
-  onStartTunnel,
-  onStopTunnel,
   isStartingServer,
   isStoppingServer,
-  isStartingTunnel,
-  isStoppingTunnel,
   isBuildActive,
   onPortDetected,
   devicePreset: externalDevicePreset,
@@ -345,52 +337,24 @@ const TabbedPreview = forwardRef<HTMLDivElement, TabbedPreviewProps>(({
             </>
           )}
 
-          {/* Server/Tunnel Controls */}
+          {/* Server Controls */}
           {currentProject?.runCommand && currentProject?.status === 'completed' && !isBuildActive && (
             <>
               <div className="w-px h-5 bg-border mx-1" />
               <div className="flex items-center gap-1">
                 {isServerRunning ? (
-                  <>
-                    {/* Tunnel toggle */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        {currentProject.tunnelUrl ? (
-                          <button
-                            onClick={onStopTunnel}
-                            disabled={isStoppingTunnel}
-                            className="p-1.5 rounded-md text-orange-400 hover:text-orange-300 hover:bg-orange-500/20 transition-all disabled:opacity-50"
-                          >
-                            <Cloud className={cn('w-4 h-4', isStoppingTunnel && 'animate-pulse')} />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={onStartTunnel}
-                            disabled={isStartingTunnel}
-                            className="p-1.5 rounded-md text-muted-foreground hover:text-blue-500 hover:bg-blue-500/20 transition-all disabled:opacity-50"
-                          >
-                            <Cloud className={cn('w-4 h-4', isStartingTunnel && 'animate-pulse')} />
-                          </button>
-                        )}
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        {currentProject.tunnelUrl ? 'Stop Tunnel' : 'Start Tunnel'}
-                      </TooltipContent>
-                    </Tooltip>
-                    {/* Stop Server */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          onClick={onStopServer}
-                          disabled={isStoppingServer}
-                          className="p-1.5 rounded-md text-[#FF45A8] hover:text-[#FF70BC] hover:bg-[#FF45A8]/20 transition-all disabled:opacity-50"
-                        >
-                          <Square className={cn('w-4 h-4', isStoppingServer && 'animate-pulse')} />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">Stop Server</TooltipContent>
-                    </Tooltip>
-                  </>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={onStopServer}
+                        disabled={isStoppingServer}
+                        className="p-1.5 rounded-md text-[#FF45A8] hover:text-[#FF70BC] hover:bg-[#FF45A8]/20 transition-all disabled:opacity-50"
+                      >
+                        <Square className={cn('w-4 h-4', isStoppingServer && 'animate-pulse')} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Stop Server</TooltipContent>
+                  </Tooltip>
                 ) : (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -417,12 +381,8 @@ const TabbedPreview = forwardRef<HTMLDivElement, TabbedPreviewProps>(({
               selectedProject={selectedProject}
               onStartServer={onStartServer}
               onStopServer={onStopServer}
-              onStartTunnel={onStartTunnel}
-              onStopTunnel={onStopTunnel}
               isStartingServer={isStartingServer}
               isStoppingServer={isStoppingServer}
-              isStartingTunnel={isStartingTunnel}
-              isStoppingTunnel={isStoppingTunnel}
               isBuildActive={isBuildActive}
               devicePreset={devicePreset}
               hideControls={true}

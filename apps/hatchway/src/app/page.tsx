@@ -33,7 +33,7 @@ import { useRunner } from "@/contexts/RunnerContext";
 import { useAgent } from "@/contexts/AgentContext";
 import { useProjectMessages, useProject } from "@/queries/projects";
 import { useRunnerStatus } from "@/queries/runner";
-import { useGitHubStatus } from "@/queries/github";
+
 import { useSaveMessage } from "@/mutations/messages";
 import { useQueryClient } from "@tanstack/react-query";
 import { useBrowserMetrics } from "@/hooks/useBrowserMetrics";
@@ -70,10 +70,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { OnboardingModal, LocalModeOnboarding } from "@/components/onboarding";
 import { LoginModal as LoginModalComponent } from "@/components/auth/LoginModal";
 import { Button } from "@/components/ui/button";
-import { GitHubButton, getGitHubPushMessage, getGitHubSyncMessage, type RepoVisibility } from "@/components/github";
-import { NeonDBButton, getNeonDBSetupMessage } from "@/components/neondb";
-import { DeployToRailwayButton } from "@/components/railway";
-
 import { Monitor, Code, Terminal, MousePointer2, RefreshCw, Copy, Check, Smartphone, Tablet, Cloud, Play, Square, ExternalLink, Loader2, User } from "lucide-react";
 import {
   Tooltip,
@@ -245,8 +241,6 @@ function HomeContent() {
     useState<GenerationState | null>(null);
   const [isStartingServer, setIsStartingServer] = useState(false);
   const [isStoppingServer, setIsStoppingServer] = useState(false);
-  const [isStartingTunnel, setIsStartingTunnel] = useState(false);
-  const [isStoppingTunnel, setIsStoppingTunnel] = useState(false);
   const [devicePreset, setDevicePreset] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [chatPanelWidth, setChatPanelWidth] = useState(450);
   const [activeTab, setActiveTab] = useState<'preview' | 'editor' | 'terminal'>('preview');
@@ -363,9 +357,6 @@ function HomeContent() {
     runnerStatusData?.connections?.some((c) => c.runnerId === currentProject.runnerId)
   );
   
-  // GitHub status for auto-push feature
-  const { data: githubStatus } = useGitHubStatus(currentProject?.id || '');
-
   // Use ref to track current project state without causing effect re-runs
   const currentProjectRef = useRef(currentProject);
   useEffect(() => {
@@ -562,11 +553,6 @@ function HomeContent() {
     return buildHistory.length > 0 ? buildHistory[0] : null;
   }, [generationState, buildHistory]);
 
-  // Track which builds we've already triggered auto-push for
-  const autoPushedBuildIdsRef = useRef<Set<string>>(new Set());
-  // Track pending auto-push to trigger after startGeneration is available
-  const pendingAutoPushRef = useRef<{ projectId: string; buildId: string } | null>(null);
-  
   // Force refetch when build completes to ensure fresh data from database
   // This eliminates duplicate "Build complete!" messages
   useEffect(() => {
@@ -590,19 +576,6 @@ function HomeContent() {
     // Also trigger explicit refetch
     refetchProjectMessages?.();
     
-    // Check if we should auto-push to GitHub
-    // Don't auto-push if the build was a GitHub push itself (avoid infinite loop)
-    const isGitHubPushBuild = generationState.buildPlan?.toLowerCase().includes('push') && 
-                              generationState.buildPlan?.toLowerCase().includes('git');
-    if (githubStatus?.isConnected && 
-        githubStatus?.autoPush && 
-        !isGitHubPushBuild &&
-        !autoPushedBuildIdsRef.current.has(generationState.id)) {
-      console.log('🐙 [Auto-Push] Scheduling auto-push after build completion');
-      autoPushedBuildIdsRef.current.add(generationState.id);
-      pendingAutoPushRef.current = { projectId: currentProject.id, buildId: generationState.id };
-    }
-    
     // NOTE: We intentionally do NOT clear generationState here anymore.
     // The completed build state (with todos and summary) should remain visible
     // until the refetch completes and serverBuilds/buildHistory is populated.
@@ -610,7 +583,7 @@ function HomeContent() {
     // before the DB data arrived. The buildHistory useMemo already handles
     // deduplication to prevent the same build appearing twice.
     console.log('✅ [State Preserved] Keeping completed build in state until server data arrives:', generationState.id);
-  }, [generationState, currentProject?.id, refetchProjectMessages, queryClient, serverBuilds, githubStatus]);
+  }, [generationState, currentProject?.id, refetchProjectMessages, queryClient, serverBuilds]);
 
   const updateGenerationState = useCallback(
     (
@@ -1206,27 +1179,6 @@ function HomeContent() {
     updateGenerationState,
   ]);
 
-  // Handle GitHub OAuth callback - select the project that initiated the flow
-  useEffect(() => {
-    const githubConnectPending = searchParams?.get('github_connect_pending');
-    const pendingProjectId = searchParams?.get('projectId');
-    
-    if (githubConnectPending === 'true' && pendingProjectId && projects.length > 0) {
-      // Find the project by ID
-      const project = projects.find((p) => p.id === pendingProjectId);
-      if (project && (!currentProject || currentProject.id !== project.id)) {
-        if (DEBUG_PAGE) console.log("🔄 GitHub OAuth callback - selecting project:", project.slug);
-        setCurrentProject(project);
-        setActiveProjectId(project.id);
-        
-        // Update URL to include project slug for consistency
-        const url = new URL(window.location.href);
-        url.searchParams.set('project', project.slug);
-        window.history.replaceState({}, '', url.toString());
-      }
-    }
-  }, [searchParams, projects, currentProject, setActiveProjectId]);
-
   // Sync currentProject with latest data - immediate for important changes, debounced for rapid updates
   const lastSyncKeyRef = useRef<string>("");
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1499,26 +1451,6 @@ function HomeContent() {
       freshState.id // Pass buildId directly
     );
   };
-
-  // Effect to trigger pending auto-push (after startGeneration is defined)
-  useEffect(() => {
-    const pending = pendingAutoPushRef.current;
-    if (!pending) return;
-    
-    // Clear the pending ref immediately to prevent double-triggering
-    pendingAutoPushRef.current = null;
-    
-    console.log('🐙 [Auto-Push] Triggering auto-push for build:', pending.buildId);
-    
-    // Small delay to let the UI settle before starting new generation
-    const timer = setTimeout(() => {
-      startGeneration(pending.projectId, getGitHubSyncMessage(), {
-        addUserMessage: false, // Don't show as user message, it's automatic
-      });
-    }, 1500);
-    
-    return () => clearTimeout(timer);
-  });
 
   const startGenerationStream = async (
     projectId: string,
@@ -2617,89 +2549,6 @@ function HomeContent() {
     }
   };
 
-  const startTunnel = async () => {
-    if (!currentProject || isStartingTunnel) return;
-
-    setIsStartingTunnel(true);
-    try {
-      const res = await fetch(
-        `/api/projects/${currentProject.id}/start-tunnel`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ runnerId: selectedRunnerId }),
-        }
-      );
-      if (res.ok) {
-        if (DEBUG_PAGE) console.log("✅ Tunnel start requested");
-
-        // Poll for tunnel URL to appear
-        let pollCount = 0;
-        const maxPolls = 15;
-
-        const pollInterval = setInterval(async () => {
-          pollCount++;
-          await refetch();
-
-          const updated = projectsRef.current.find(
-            (p) => p.id === currentProject.id
-          );
-          if (updated?.tunnelUrl) {
-            if (DEBUG_PAGE) console.log("✅ Tunnel URL detected:", updated.tunnelUrl);
-            clearInterval(pollInterval);
-            setIsStartingTunnel(false);
-          } else if (pollCount >= maxPolls) {
-            if (DEBUG_PAGE) console.log("⏱️ Tunnel poll timeout reached");
-            clearInterval(pollInterval);
-            setIsStartingTunnel(false);
-          }
-        }, 1000);
-      } else {
-        // API returned an error
-        const error = await res.json();
-        console.error("Failed to start tunnel:", error);
-        setIsStartingTunnel(false);
-      }
-    } catch (error) {
-      console.error("Failed to start tunnel:", error);
-      setIsStartingTunnel(false);
-    }
-  };
-
-  const stopTunnel = async () => {
-    if (!currentProject || isStoppingTunnel) return;
-
-    setIsStoppingTunnel(true);
-    try {
-      const res = await fetch(
-        `/api/projects/${currentProject.id}/stop-tunnel`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ runnerId: selectedRunnerId }),
-        }
-      );
-      if (res.ok) {
-        if (DEBUG_PAGE) console.log("✅ Tunnel stop requested");
-        // Update currentProject to clear tunnel URL
-        setCurrentProject((prev) =>
-          prev
-            ? {
-                ...prev,
-                tunnelUrl: null,
-              }
-            : null
-        );
-        // Refresh to confirm
-        await refetch();
-      }
-    } catch (error) {
-      console.error("Failed to stop tunnel:", error);
-    } finally {
-      setTimeout(() => setIsStoppingTunnel(false), 1000);
-    }
-  };
-
   return (
     <SDKModeProvider>
     <CommandPaletteProvider
@@ -2831,45 +2680,6 @@ function HomeContent() {
             )}
           </div>
           <div className="flex items-center gap-3">
-            {/* Integrations - show when project is selected and completed */}
-            {currentProject && currentProject.status === 'completed' && (
-              <>
-                <NeonDBButton
-                  projectId={currentProject.id}
-                  isGenerating={isGenerating}
-                  onSetupClick={() => {
-                    switchTab("build");
-                    startGeneration(currentProject.id, getNeonDBSetupMessage(), {
-                      addUserMessage: true,
-                    });
-                  }}
-                  variant="default"
-                />
-                <GitHubButton
-                  projectId={currentProject.id}
-                  projectSlug={currentProject.slug}
-                  isGenerating={isGenerating}
-                  onRepoCreated={(repoUrl: string, cloneUrl: string) => {
-                    // Repo was created via API - now trigger skill to push code
-                    switchTab("build");
-                    startGeneration(currentProject.id, getGitHubPushMessage(repoUrl, cloneUrl), {
-                      addUserMessage: true,
-                    });
-                  }}
-                  onPushClick={() => {
-                    // Push changes to existing repo
-                    switchTab("build");
-                    startGeneration(currentProject.id, getGitHubSyncMessage(), {
-                      addUserMessage: true,
-                    });
-                  }}
-                  variant="default"
-                />
-                <DeployToRailwayButton
-                  projectId={currentProject.id}
-                />
-              </>
-            )}
             {/* Sign in button - show when not authenticated and not in local mode */}
             {!isAuthenticated && !isLocalMode && (
               <Button
@@ -3474,12 +3284,8 @@ function HomeContent() {
                         projectId={currentProject?.id}
                         onStartServer={startDevServer}
                         onStopServer={stopDevServer}
-                        onStartTunnel={startTunnel}
-                        onStopTunnel={stopTunnel}
                         isStartingServer={isStartingServer}
                         isStoppingServer={isStoppingServer}
-                        isStartingTunnel={isStartingTunnel}
-                        isStoppingTunnel={isStoppingTunnel}
                         isBuildActive={isCreatingProject || generationState?.isActive || false}
                         devicePreset={devicePreset}
                         onDevicePresetChange={setDevicePreset}

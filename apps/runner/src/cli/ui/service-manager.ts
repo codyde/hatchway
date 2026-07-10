@@ -370,67 +370,20 @@ export class ServiceManager extends EventEmitter {
   }
 
   /**
-   * Create a Cloudflare tunnel for a service
+   * Cloudflare tunnels removed — railgate handles sandbox previews.
+   * Kept as no-ops so existing CLI call sites don't break.
    */
-  async createTunnel(name: ServiceName): Promise<string | null> {
-    const service = this.services.get(name);
-    if (!service || !service.state.port) {
-      throw new Error(`Service ${name} not found or has no port`);
-    }
-
-    // Update state to creating
-    service.state.tunnelStatus = 'creating';
-    this.emit('service:tunnel-change', name, null, 'creating');
-
-    try {
-      // Import tunnel manager
-      const { tunnelManager } = await import('../../lib/tunnel/manager.js');
-
-      // Enable silent mode for TUI
-      tunnelManager.setSilent(true);
-
-      // Create tunnel
-      const tunnelUrl = await tunnelManager.createTunnel(service.state.port);
-
-      // Update state
-      service.state.tunnelUrl = tunnelUrl;
-      service.state.tunnelStatus = 'active';
-      this.emit('service:tunnel-change', name, tunnelUrl, 'active');
-
-      return tunnelUrl;
-    } catch (error) {
-      service.state.tunnelStatus = 'failed';
-      service.state.error = error instanceof Error ? error.message : 'Tunnel creation failed';
-      this.emit('service:tunnel-change', name, null, 'failed');
-      return null;
-    }
+  async createTunnel(_name: ServiceName): Promise<string | null> {
+    return null;
   }
 
-  /**
-   * Close tunnel for a service
-   */
   async closeTunnel(name: ServiceName): Promise<void> {
     const service = this.services.get(name);
-    if (!service || !service.state.port) {
-      return;
-    }
-
-    // Update state immediately
+    if (!service) return;
     service.state.tunnelUrl = undefined;
     service.state.tunnelStatus = undefined;
-    this.emit('service:tunnel-change', name, null, 'active');
-
-    try {
-      const { tunnelManager } = await import('../../lib/tunnel/manager.js');
-      await tunnelManager.closeTunnel(service.state.port);
-    } catch (error) {
-      // Best effort
-    }
   }
 
-  /**
-   * Get tunnel URL for a service
-   */
   getTunnelUrl(name: ServiceName): string | null {
     return this.services.get(name)?.state.tunnelUrl || null;
   }

@@ -2,16 +2,16 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ExternalLink, RefreshCw, Play, Square, Copy, Check, Monitor, Smartphone, Tablet, Cloud, Rocket } from 'lucide-react';
+import { RefreshCw, Play, Square, Copy, Check, Monitor, Smartphone, Tablet, ExternalLink, Rocket } from 'lucide-react';
 import { useProjects } from '@/contexts/ProjectContext';
 import SelectionMode from './SelectionMode';
 import ElementComment from './ElementComment';
 import { toggleSelectionMode } from '@hatchway/agent-core/lib/selection/injector';
 import { useElementEdits } from '@/hooks/useElementEdits';
 import { useHmrProxy } from '@/hooks/useHmrProxy';
-import BuildingAppSkeleton from './BuildingAppSkeleton';
+import StarfoxLoadingGame from './StarfoxLoadingGame';
 import { ServerRestartProgress } from './ServerRestartProgress';
-import { ServerRestarting, TunnelConnecting } from './StatusAnimations';
+import { ServerRestarting } from './StatusAnimations';
 import {
   HoverCard,
   HoverCardContent,
@@ -20,19 +20,15 @@ import {
 
 type DevicePreset = 'desktop' | 'tablet' | 'mobile';
 
-// Check if WebSocket proxy is enabled (tunnels through WS instead of Cloudflare)
+// WebSocket proxy routes remote frontend traffic through the runner connection
 const USE_WS_PROXY = process.env.NEXT_PUBLIC_USE_WS_PROXY === 'true';
 
 interface PreviewPanelProps {
   selectedProject?: string | null;
   onStartServer?: () => void;
   onStopServer?: () => void;
-  onStartTunnel?: () => void;
-  onStopTunnel?: () => void;
   isStartingServer?: boolean;
   isStoppingServer?: boolean;
-  isStartingTunnel?: boolean;
-  isStoppingTunnel?: boolean;
   isBuildActive?: boolean;
   devicePreset?: DevicePreset;
   hideControls?: boolean;
@@ -46,12 +42,8 @@ export default function PreviewPanel({
   selectedProject, 
   onStartServer, 
   onStopServer, 
-  onStartTunnel, 
-  onStopTunnel, 
   isStartingServer, 
   isStoppingServer, 
-  isStartingTunnel, 
-  isStoppingTunnel, 
   isBuildActive,
   devicePreset: externalDevicePreset,
   isSelectionModeEnabled: externalSelectionMode,
@@ -71,9 +63,6 @@ export default function PreviewPanel({
   // Use external device preset if provided, otherwise use internal state
   const devicePreset = externalDevicePreset ?? internalDevicePreset;
   const setDevicePreset = setInternalDevicePreset;
-  const [isTunnelLoading, setIsTunnelLoading] = useState(false);
-  const [dnsVerificationAttempt, setDnsVerificationAttempt] = useState<number>(0);
-  const [dnsTroubleshooting, setDnsTroubleshooting] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { edits, addEdit, removeEdit } = useElementEdits();
   const lastTunnelUrlRef = useRef<string | null>(null);
@@ -91,7 +80,6 @@ export default function PreviewPanel({
   const actualPort = currentProject?.devServerPort;
   
   // HMR Proxy - tunnels Vite HMR WebSocket through our WS connection
-  // Only enabled when using WS proxy mode (remote frontend without Cloudflare tunnel)
   useHmrProxy({
     projectId: currentProject?.id || '',
     runnerId: currentProject?.runnerId || undefined,
@@ -104,8 +92,7 @@ export default function PreviewPanel({
   const [isSSEConnected, setIsSSEConnected] = useState(false);
   const sseFailureCountRef = useRef(0);
   
-  // Track previous stopping states for refetch trigger
-  const prevStoppingTunnelRef = useRef(isStoppingTunnel);
+  // Track previous stopping state for refetch trigger
   const prevStoppingServerRef = useRef(isStoppingServer);
 
   // Clear last preview URL when project changes
@@ -159,10 +146,7 @@ export default function PreviewPanel({
     // Only poll if SSE has failed multiple times (not just temporarily disconnected)
     if (isSSEConnected || sseFailureCountRef.current < 2) return;
 
-    // Poll every 2 seconds while server starting, tunnel starting, or server running without tunnel URL
-    const shouldPoll = isStartingServer || isStartingTunnel ||
-                      (currentProject?.devServerStatus === 'starting') ||
-                      (isStartingTunnel && !currentProject?.tunnelUrl);
+    const shouldPoll = isStartingServer || currentProject?.devServerStatus === 'starting';
 
     if (!shouldPoll) return;
 
@@ -173,116 +157,52 @@ export default function PreviewPanel({
     return () => {
       clearInterval(interval);
     };
-  }, [isSSEConnected, isStartingServer, isStartingTunnel, currentProject?.devServerStatus, currentProject?.tunnelUrl, refetch]);
+  }, [isSSEConnected, isStartingServer, currentProject?.devServerStatus, refetch]);
 
-  // BUG FIX: Force refetch after stopping operations complete
-  // This ensures UI updates even if SSE doesn't receive the event
+  // Force refetch after stop completes (if SSE missed the event)
   useEffect(() => {
-    // If we just finished stopping tunnel/server, force a refetch
-    if ((prevStoppingTunnelRef.current && !isStoppingTunnel) || 
-        (prevStoppingServerRef.current && !isStoppingServer)) {
+    if (prevStoppingServerRef.current && !isStoppingServer) {
       console.log('[PreviewPanel] Stop operation completed, forcing refetch...');
       refetch();
     }
-    
-    // Update refs for next render
-    prevStoppingTunnelRef.current = isStoppingTunnel;
     prevStoppingServerRef.current = isStoppingServer;
-  }, [isStoppingTunnel, isStoppingServer, refetch]);
+  }, [isStoppingServer, refetch]);
 
-  // Tunnel URL handling - skip DNS verification, use URL directly
-  // DNS verification was causing 30+ second delays due to Chrome cache issues
+  // Preview URL handling for railgate / sandbox public URLs stored on tunnelUrl
   useEffect(() => {
     const currentTunnelUrl = currentProject?.tunnelUrl;
 
-    // Show brief loading while tunnel is being created
-    if (isStartingTunnel) {
-      setIsTunnelLoading(true);
-      return;
-    }
-
-    // When tunnel URL arrives, use it immediately
     if (currentTunnelUrl && currentTunnelUrl !== lastTunnelUrlRef.current) {
-      if (DEBUG_PREVIEW) console.log('🔗 Tunnel URL received, using directly:', currentTunnelUrl);
+      if (DEBUG_PREVIEW) console.log('🔗 Preview URL received:', currentTunnelUrl);
       lastTunnelUrlRef.current = currentTunnelUrl;
       setVerifiedTunnelUrl(currentTunnelUrl);
-      setIsTunnelLoading(false);
-      setDnsTroubleshooting(false);
-      
-      // Force iframe to reload with tunnel URL
       setKey(prev => prev + 1);
       return;
     }
 
-    // Clear verified URL if tunnel was removed
     if (!currentTunnelUrl && lastTunnelUrlRef.current) {
       lastTunnelUrlRef.current = null;
       setVerifiedTunnelUrl(null);
-      setIsTunnelLoading(false);
-      setDnsTroubleshooting(false);
     }
-
-    // Hide loading if not starting
-    if (!isStartingTunnel) {
-      setIsTunnelLoading(false);
-    }
-  }, [currentProject?.tunnelUrl, isStartingTunnel]);
+  }, [currentProject?.tunnelUrl]);
 
   // Detect if frontend is being accessed remotely (not localhost)
   const frontendIsRemote = typeof window !== 'undefined' &&
     !window.location.hostname.includes('localhost') &&
     !window.location.hostname.includes('127.0.0.1');
 
-  // Detect if server is running on a remote runner (not local machine)
-  // Remote runners typically have runnerId != 'local'
-  const isRemoteRunner = currentProject?.runnerId && currentProject.runnerId !== 'local';
-  const isLocalRunner = !isRemoteRunner;
-  const needsTunnel = frontendIsRemote && actualPort && currentProject?.devServerStatus === 'running' && !currentProject?.tunnelUrl;
+  // Sandbox projects run entirely in a Railway sandbox and are ONLY reachable
+  // via the railgate tunnel — there is no local dev server.
+  const isSandboxProject = (currentProject?.executionMode ?? 'local') === 'sandbox';
 
-  // Auto-create tunnel when remote frontend detects server started (only once per server start)
-  const hasAutoStartedTunnel = useRef(false);
+  // Show preview when server is running and we can reach it:
+  // local frontend, railgate preview URL, or WS proxy
+  const canShowPreview = !!currentProject?.id && currentProject?.devServerStatus === 'running' && (
+    isSandboxProject
+      ? !!currentProject?.tunnelUrl
+      : !!actualPort && (!frontendIsRemote || !!currentProject?.tunnelUrl || USE_WS_PROXY)
+  );
 
-  useEffect(() => {
-    // Reset flag when server stops
-    if (currentProject?.devServerStatus !== 'running') {
-      hasAutoStartedTunnel.current = false;
-    }
-
-    // Debug auto-tunnel logic (disabled in production)
-    if (DEBUG_PREVIEW) {
-      console.log('[PreviewPanel] Auto-tunnel check:', {
-        needsTunnel,
-        onStartTunnel: !!onStartTunnel,
-        isStartingTunnel,
-        hasAutoStarted: hasAutoStartedTunnel.current,
-        willCreate: needsTunnel && onStartTunnel && !isStartingTunnel && !hasAutoStartedTunnel.current
-      });
-    }
-
-    // Auto-start tunnel when:
-    // - Remote frontend (Railway)
-    // - Server just started
-    // - No tunnel exists
-    // - Haven't already auto-started for this server session
-    // - WebSocket proxy is NOT enabled (if WS proxy is on, we don't need Cloudflare tunnel)
-    if (needsTunnel && onStartTunnel && !isStartingTunnel && !hasAutoStartedTunnel.current && !USE_WS_PROXY) {
-      console.log('🔗 Remote frontend detected - auto-creating tunnel...');
-      hasAutoStartedTunnel.current = true;
-      onStartTunnel();
-    }
-  }, [needsTunnel, onStartTunnel, isStartingTunnel, currentProject?.devServerStatus]);
-
-  // Construct preview URL - ALWAYS use proxy route for script injection
-  // Proxy will intelligently route to tunnel (remote) or localhost (local)
-  // This ensures selection mode works in all scenarios
-
-  // For remote frontend: Only show preview if tunnel exists OR is being created OR WS proxy enabled
-  // For local frontend: Always show (can access localhost)
-  const canShowPreview = actualPort && currentProject?.devServerStatus === 'running' && currentProject?.id &&
-    (!frontendIsRemote || currentProject?.tunnelUrl || isTunnelLoading || USE_WS_PROXY);
-    // Show if: Local frontend (always) OR tunnel exists OR tunnel being created OR WS proxy enabled
-
-  // Debug logging
   if (DEBUG_PREVIEW && currentProject?.devServerStatus === 'running') {
     console.log('[PreviewPanel] Can show preview?', {
       canShowPreview,
@@ -290,14 +210,12 @@ export default function PreviewPanel({
       devServerStatus: currentProject?.devServerStatus,
       frontendIsRemote,
       tunnelUrl: currentProject?.tunnelUrl,
-      isTunnelLoading,
-      needsTunnel,
+      isSandboxProject,
     });
   }
 
-  // Determine preview URL based on frontend location
-  // - Local frontend: Use proxy (works with localhost runner)
-  // - Remote frontend + tunnel: Use tunnel directly (proxy can't reach tunnel)
+  // Local frontend / WS proxy: use proxy route for script injection
+  // Remote + railgate URL: use the public URL directly
   const basePreviewUrl = canShowPreview
     ? (frontendIsRemote && verifiedTunnelUrl
         ? verifiedTunnelUrl
@@ -305,37 +223,21 @@ export default function PreviewPanel({
     : '';
 
   // During follow-up builds, keep showing the last working preview URL
-  // This prevents the loading animation from showing when server status temporarily changes
   if (basePreviewUrl) {
     lastPreviewUrlRef.current = basePreviewUrl;
   }
   
-  // Use last known preview URL during builds to keep iframe visible
   const baseUrl = basePreviewUrl || (isBuildActive ? lastPreviewUrlRef.current : '');
   
-  // Add cache-bust parameter to force reload (bypass browser cache)
   const previewUrl = baseUrl 
     ? (baseUrl.includes('?') 
         ? `${baseUrl}&_cb=${cacheBust}` 
         : `${baseUrl}${cacheBust ? `?_cb=${cacheBust}` : ''}`)
     : '';
 
-  // Note on URL strategy:
-  // - Local frontend: Always use proxy (fetches from localhost runner)
-  // - Remote frontend without tunnel: Use proxy (will wait for tunnel)
-  // - Remote frontend with tunnel: Use tunnel directly (different networks)
-
-  // Sandbox projects run entirely in a Railway sandbox and are ONLY reachable
-  // via the railgate tunnel — there is no local dev server, so we must never
-  // fall back to a localhost URL for them (that was showing localhost after a
-  // stop/restart while the sandbox re-synced and the tunnel reconnected).
-  const isSandboxProject = (currentProject?.executionMode ?? 'local') === 'sandbox';
   const resolvedTunnelUrl = verifiedTunnelUrl || currentProject?.tunnelUrl || '';
   const localhostUrl = actualPort ? `http://localhost:${actualPort}` : '';
-  // Real URL to copy/open: tunnel always wins; localhost only for non-sandbox.
   const externalUrl = resolvedTunnelUrl || (isSandboxProject ? '' : localhostUrl);
-  // What the URL bar shows: a pending label for a sandbox still bringing its
-  // tunnel up, instead of a misleading localhost address.
   const displayUrlLabel = externalUrl || (isSandboxProject ? 'Starting sandbox preview…' : localhostUrl);
 
 
@@ -654,14 +556,13 @@ export default function PreviewPanel({
 
               {/* Open buttons */}
               <div className="flex items-center gap-1">
-                {/* Open Tunnel URL */}
-                {verifiedTunnelUrl && (
+                {resolvedTunnelUrl && (
                   <button
-                    onClick={() => window.open(verifiedTunnelUrl, '_blank')}
+                    onClick={() => window.open(resolvedTunnelUrl, '_blank')}
                     className="p-1.5 rounded-md hover:bg-blue-500/20 transition-all duration-200 group"
-                    title="Open tunnel URL in new tab"
+                    title="Open preview URL in new tab"
                   >
-                    <Cloud className="w-4 h-4 text-blue-400 group-hover:text-blue-300" />
+                    <ExternalLink className="w-4 h-4 text-blue-400 group-hover:text-blue-300" />
                   </button>
                 )}
 
@@ -685,45 +586,19 @@ export default function PreviewPanel({
           </div>
         )}
 
-        {/* Right controls - Server/Tunnel buttons - Only show when build is complete */}
+        {/* Right controls - Server buttons - Only show when build is complete */}
         <div className="flex items-center gap-2 ml-auto">
-          {/* Only show server controls when project is completed (not building) and has a run command */}
           {currentProject?.runCommand && currentProject?.status === 'completed' && !isBuildActive && (
             <>
               {currentProject.devServerStatus === 'running' ? (
-                <>
-                  {/* Tunnel Controls */}
-                  {currentProject.tunnelUrl ? (
-                    <button
-                      onClick={onStopTunnel}
-                      disabled={isStoppingTunnel}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/40 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Stop Cloudflare tunnel"
-                    >
-                      <Square className={`w-3.5 h-3.5 ${isStoppingTunnel ? 'animate-pulse' : ''}`} />
-                      {isStoppingTunnel ? 'Stopping...' : 'Stop Tunnel'}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={onStartTunnel}
-                      disabled={isStartingTunnel}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Start Cloudflare tunnel for public access"
-                    >
-                      <Cloud className={`w-3.5 h-3.5 ${isStartingTunnel ? 'animate-pulse' : ''}`} />
-                      {isStartingTunnel ? 'Starting...' : 'Start Tunnel'}
-                    </button>
-                  )}
-                  {/* Stop Server Button */}
-                  <button
-                    onClick={onStopServer}
-                    disabled={isStoppingServer}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-[#FF45A8]/20 hover:bg-[#FF45A8]/30 text-[#FF45A8] border border-[#FF45A8]/30 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Square className={`w-3.5 h-3.5 ${isStoppingServer ? 'animate-pulse' : ''}`} />
-                    {isStoppingServer ? 'Stopping...' : 'Stop'}
-                  </button>
-                </>
+                <button
+                  onClick={onStopServer}
+                  disabled={isStoppingServer}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-[#FF45A8]/20 hover:bg-[#FF45A8]/30 text-[#FF45A8] border border-[#FF45A8]/30 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Square className={`w-3.5 h-3.5 ${isStoppingServer ? 'animate-pulse' : ''}`} />
+                  {isStoppingServer ? 'Stopping...' : 'Stop'}
+                </button>
               ) : (
                 <button
                   onClick={onStartServer}
@@ -740,109 +615,10 @@ export default function PreviewPanel({
         </div>
       )}
       <div className="flex-1 bg-card relative flex items-start justify-center overflow-auto">
-        {previewUrl || isTunnelLoading || dnsTroubleshooting ? (
+        {previewUrl ? (
           <>
-            {/* DNS Troubleshooting overlay */}
-            {dnsTroubleshooting && (
-              <div className="absolute inset-0 bg-background/95 backdrop-blur-sm flex items-center justify-center z-20 p-6">
-                <div className="max-w-lg w-full bg-card rounded-xl p-8 space-y-6 border border-border">
-                  <div className="text-center space-y-2">
-                    <div className="w-16 h-16 rounded-full bg-orange-500/20 flex items-center justify-center mx-auto mb-4">
-                      <Cloud className="w-8 h-8 text-orange-400" />
-                    </div>
-                    <h3 className="text-xl font-semibold text-foreground">DNS Resolution Issue</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Your browser's DNS cache is preventing the tunnel from loading. Follow these steps to resolve:
-                    </p>
-                  </div>
-
-                  <div className="space-y-4">
-                    {/* Step 1: Run DNS flush commands */}
-                    <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 text-sm font-semibold">1</div>
-                        <p className="text-sm font-medium text-foreground">Run these commands in Terminal</p>
-                      </div>
-
-                      <div className="relative group">
-                        <code className="block bg-muted rounded px-3 py-2 text-xs font-mono text-foreground whitespace-pre overflow-x-auto">
-                          sudo dscacheutil -flushcache{'\n'}sudo killall -HUP mDNSResponder
-                        </code>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText('sudo dscacheutil -flushcache\nsudo killall -HUP mDNSResponder');
-                            setCopied(true);
-                            setTimeout(() => setCopied(false), 2000);
-                          }}
-                          className="absolute right-2 top-2 p-1.5 rounded bg-blue-500/20 hover:bg-blue-500/30 opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Copy commands"
-                        >
-                          {copied ? (
-                            <Check className="w-3.5 h-3.5 text-green-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5 text-blue-400" />
-                          )}
-                        </button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Paste this in Terminal and press Enter
-                      </p>
-                    </div>
-
-                    {/* Step 2: Reload page */}
-                    <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 text-sm font-semibold">2</div>
-                        <p className="text-sm font-medium text-foreground">Reload the page</p>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          // Reload iframe only (not full page)
-                          setDnsTroubleshooting(false);
-                          setKey(prev => prev + 1); // Force iframe reload
-                          setDnsVerificationAttempt(0);
-                          // Re-run verification
-                          if (currentProject?.tunnelUrl) {
-                            lastTunnelUrlRef.current = null;
-                            setVerifiedTunnelUrl(null);
-                            setIsTunnelLoading(true);
-                          }
-                        }}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 rounded-lg transition-colors font-medium"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                        Reload Preview
-                      </button>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-muted-foreground text-center">
-                    After running the DNS commands, click "Reload Preview" to retry the tunnel connection.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Tunnel loading overlay with attempt counter */}
-            {isTunnelLoading && !dnsTroubleshooting && (
-              <div className="absolute inset-0 bg-background/95 backdrop-blur-sm flex items-center justify-center z-20 p-6">
-                <div className="max-w-md w-full">
-                  <TunnelConnecting 
-                    status="connecting"
-                    port={actualPort || undefined}
-                  />
-                  {dnsVerificationAttempt > 0 && (
-                    <p className="text-xs text-muted-foreground text-center mt-3">
-                      DNS verification attempt {dnsVerificationAttempt}/10...
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
             {/* Loading indicator overlay */}
-            {isRefreshing && !isTunnelLoading && (
+            {isRefreshing && (
               <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-10">
                 <div className="flex flex-col items-center gap-3">
                   <RefreshCw className="w-8 h-8 text-primary animate-spin" />
@@ -931,13 +707,12 @@ export default function PreviewPanel({
         ) : (
           <div className="w-full h-full flex items-center justify-center text-muted-foreground">
             {isBuildActive ? (
-              <BuildingAppSkeleton />
+              <StarfoxLoadingGame />
             ) : currentProject?.devServerStatus === 'restarting' ? (
               <div className="flex flex-col items-center gap-4 max-w-lg px-6">
                 <ServerRestartProgress 
                   projectName={currentProject.name}
                   port={currentProject.devServerPort || undefined}
-                  hasTunnel={!!currentProject.tunnelUrl}
                 />
               </div>
             ) : currentProject?.devServerStatus === 'starting' || isStartingServer ? (
@@ -946,33 +721,21 @@ export default function PreviewPanel({
                   phase="starting"
                   projectName={currentProject?.name}
                   port={currentProject?.devServerPort || undefined}
-                  hasTunnel={frontendIsRemote}
                 />
               </div>
-            ) : frontendIsRemote && actualPort && currentProject?.devServerStatus === 'running' && !currentProject?.tunnelUrl ? (
+            ) : isSandboxProject && currentProject?.devServerStatus === 'running' && !currentProject?.tunnelUrl ? (
               <div className="text-center space-y-4 max-w-md px-6">
                 <div className="flex items-center justify-center">
                   <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center">
-                    <Cloud className="w-8 h-8 text-blue-400" />
+                    <Rocket className="w-8 h-8 text-blue-400" />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-xl font-semibold text-foreground">Tunnel Disconnected</h3>
+                  <h3 className="text-xl font-semibold text-foreground">Starting sandbox preview</h3>
                   <p className="text-muted-foreground text-sm">
-                    Server is running on <span className="font-mono text-foreground">localhost:{actualPort}</span> but tunnel was stopped.
-                  </p>
-                  <p className="text-muted-foreground text-sm">
-                    Restart tunnel to access remotely:
+                    Waiting for the railgate preview URL…
                   </p>
                 </div>
-                <button
-                  onClick={onStartTunnel}
-                  disabled={isStartingTunnel}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 rounded-lg transition-colors mx-auto disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Cloud className={`w-5 h-5 ${isStartingTunnel ? 'animate-pulse' : ''}`} />
-                  {isStartingTunnel ? 'Starting Tunnel...' : 'Restart Tunnel'}
-                </button>
               </div>
             ) : currentProject?.status === 'completed' && currentProject?.runCommand ? (
               <div className="text-center space-y-4 max-w-md">

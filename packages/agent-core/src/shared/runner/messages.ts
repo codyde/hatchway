@@ -11,8 +11,6 @@ export type RunnerCommandType =
   | 'cancel-build'
   | 'start-dev-server'
   | 'stop-dev-server'
-  | 'start-tunnel'
-  | 'stop-tunnel'
   | 'fetch-logs'
   | 'runner-health-check'
   | 'delete-project-files'
@@ -159,20 +157,6 @@ export interface StopDevServerCommand extends BaseCommand {
   type: 'stop-dev-server';
 }
 
-export interface StartTunnelCommand extends BaseCommand {
-  type: 'start-tunnel';
-  payload: {
-    port: number;
-  };
-}
-
-export interface StopTunnelCommand extends BaseCommand {
-  type: 'stop-tunnel';
-  payload: {
-    port: number;
-  };
-}
-
 export interface FetchLogsCommand extends BaseCommand {
   type: 'fetch-logs';
   payload: {
@@ -279,8 +263,6 @@ export type RunnerCommand =
   | CancelBuildCommand
   | StartDevServerCommand
   | StopDevServerCommand
-  | StartTunnelCommand
-  | StopTunnelCommand
   | FetchLogsCommand
   | RunnerHealthCheckCommand
   | DeleteProjectFilesCommand
@@ -590,8 +572,6 @@ const COMMAND_TYPES: RunnerCommandType[] = [
   'cancel-build',
   'start-dev-server',
   'stop-dev-server',
-  'start-tunnel',
-  'stop-tunnel',
   'fetch-logs',
   'runner-health-check',
   'delete-project-files',

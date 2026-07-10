@@ -54,27 +54,6 @@ export async function POST(
       })
       .where(eq(projects.id, id));
 
-    // Stop tunnel first if it exists
-    if (project.tunnelUrl) {
-      const stopTunnelCommand = {
-        id: randomUUID(),
-        type: 'stop-tunnel' as const,
-        projectId: id,
-        timestamp: new Date().toISOString(),
-        payload: {
-          port: project.devServerPort || 0,
-        },
-      };
-
-      try {
-        await sendCommandToRunner(runnerId, stopTunnelCommand);
-        console.log(`🔌 Sent stop-tunnel command for project ${id}`);
-      } catch (error) {
-        console.warn(`Failed to stop tunnel for project ${id}:`, error);
-        // Continue anyway - tunnel might already be stopped
-      }
-    }
-
     const command: StopDevServerCommand = {
       id: randomUUID(),
       type: 'stop-dev-server',
