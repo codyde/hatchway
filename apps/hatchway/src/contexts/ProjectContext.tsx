@@ -1,8 +1,10 @@
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useState, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useProjectsList, useProjectFiles, type Project as ProjectType, type FileNode as FileNodeType } from '@/queries/projects';
 import { useRunnerStatus } from '@/queries/runner';
+import { mergeProjectUpdate } from '@/lib/project-cache';
 
 // Re-export types for backward compatibility
 export type Project = ProjectType;
@@ -15,12 +17,14 @@ interface ProjectContextType {
   refetch: () => void;
   runnerOnline: boolean | null;
   setActiveProjectId: (id: string | null) => void;
+  updateProject: (project: Project) => void;
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   // Use TanStack Query hooks
   const projectsQuery = useProjectsList();
@@ -41,9 +45,21 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Status-stream updates and query refetches must feed the same canonical
+  // project list. Keeping a second component-local project snapshot can leave
+  // the preview body on stale provisioning state while the browser chrome has
+  // already received the live URL.
+  const updateProject = useCallback((project: Project) => {
+    queryClient.setQueryData<{ projects: Project[] }>(['projects'], (current) => {
+      if (!current) return current;
+      const projects = mergeProjectUpdate(current.projects, project);
+      return projects === current.projects ? current : { ...current, projects };
+    });
+  }, [queryClient]);
+
   return (
     <ProjectContext.Provider
-      value={{ projects, files, isLoading, refetch, runnerOnline, setActiveProjectId }}
+      value={{ projects, files, isLoading, refetch, runnerOnline, setActiveProjectId, updateProject }}
     >
       {children}
     </ProjectContext.Provider>
