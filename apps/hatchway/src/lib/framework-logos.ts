@@ -16,10 +16,6 @@ const logoMap: Record<string, LogoConfig> = {
     light: '/logos/react.svg',
     dark: '/logos/react.svg',          // React logo works on both
   },
-  'astro': {
-    light: '/astro.png',               // White logo for dark backgrounds
-    dark: '/logos/astro-dark.png',     // Dark logo for light backgrounds
-  },
   'tanstack': {
     light: '/logos/tanstack.png',
     dark: '/logos/tanstack.png',       // TanStack logo works on both
@@ -28,7 +24,7 @@ const logoMap: Record<string, LogoConfig> = {
 
 /**
  * Get the logo path for a framework value
- * @param frameworkValue - The framework identifier (e.g., 'next', 'astro')
+ * @param frameworkValue - The framework identifier (e.g., 'next', 'vite')
  * @param theme - Optional theme to get the appropriate logo variant ('light' or 'dark')
  *                'light' theme = dark background = use light logo
  *                'dark' theme = light background = use dark logo

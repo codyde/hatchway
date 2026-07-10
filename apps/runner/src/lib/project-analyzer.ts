@@ -275,9 +275,9 @@ Available templates:
 ${templateContext}
 
 Selection guidelines:
-- react-vite: Simple SPAs, prototypes, basic UIs
+- react-vite: Simple SPAs, prototypes, basic UIs, blogs, docs, landing pages
 - nextjs-fullstack: Full-stack apps needing auth, database, API routes, SSR
-- astro-static: Blogs, documentation, landing pages
+- template_tanstackstart: TanStack Start full-stack React foundation
 
 Return the template ID, your reasoning, and confidence score.
 VALID templateId values: ${templates.map(t => t.id).join(', ')}`;
@@ -312,8 +312,8 @@ VALID templateId values: ${templates.map(t => t.id).join(', ')}`;
     
     if (promptLower.includes('next') || promptLower.includes('full-stack') || promptLower.includes('database') || promptLower.includes('auth')) {
       template = templates.find(t => t.id === 'nextjs-fullstack') || template;
-    } else if (promptLower.includes('blog') || promptLower.includes('landing') || promptLower.includes('static') || promptLower.includes('docs')) {
-      template = templates.find(t => t.id === 'astro-static') || template;
+    } else if (promptLower.includes('tanstack')) {
+      template = templates.find(t => t.id === 'template_tanstackstart') || template;
     }
     
     return {

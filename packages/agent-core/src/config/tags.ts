@@ -147,14 +147,6 @@ export const TAG_DEFINITIONS: TagDefinition[] = [
         logo: '/logos/react.svg',
         repository: 'github:codyde/template-reactvite',
         branch: 'main'
-      },
-      {
-        value: 'astro',
-        label: 'Astro',
-        description: 'Content-focused static sites with islands architecture',
-        logo: '/astro.png',
-        repository: 'github:codyde/template-astro',
-        branch: 'main'
       }
     ],
     promptTemplate: 'CRITICAL: You MUST use the {label} template. Clone it using: npx degit {repository}#{branch} {{projectName}}'
