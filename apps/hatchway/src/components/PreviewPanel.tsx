@@ -50,7 +50,7 @@ export default function PreviewPanel({
   onSelectionModeChange,
   hideControls = false,
 }: PreviewPanelProps) {
-  const { projects, refetch } = useProjects();
+  const { projects, refetch, updateProject } = useProjects();
   const [key, setKey] = useState(0);
   const [cacheBust, setCacheBust] = useState(0); // For forcing iframe reload
   const [internalSelectionMode, setInternalSelectionMode] = useState(false);
@@ -70,11 +70,7 @@ export default function PreviewPanel({
   const lastPreviewUrlRef = useRef<string>(''); // Track last working preview URL to keep iframe visible during follow-up builds
 
   // Find the current project
-  const project = projects.find(p => p.slug === selectedProject);
-  const [liveProject, setLiveProject] = useState(project);
-
-  // Use live project data if available (from SSE), otherwise fall back to context
-  const currentProject = liveProject || project;
+  const currentProject = projects.find(p => p.slug === selectedProject);
 
   // Port comes from database (pre-allocated in start route)
   const actualPort = currentProject?.devServerPort;
@@ -102,13 +98,12 @@ export default function PreviewPanel({
 
   // Real-time status updates via SSE
   useEffect(() => {
-    if (!project?.id) {
-      setLiveProject(undefined);
+    if (!currentProject?.id) {
       setIsSSEConnected(false);
       return;
     }
 
-    const eventSource = new EventSource(`/api/projects/${project.id}/status-stream`);
+    const eventSource = new EventSource(`/api/projects/${currentProject.id}/status-stream`);
 
     eventSource.onopen = () => {
       setIsSSEConnected(true);
@@ -122,7 +117,7 @@ export default function PreviewPanel({
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'status-update' && data.project) {
-          setLiveProject(data.project);
+          updateProject(data.project);
         }
       } catch (err) {
         console.error('Failed to parse SSE status event:', err);
@@ -132,21 +127,23 @@ export default function PreviewPanel({
     eventSource.onerror = () => {
       setIsSSEConnected(false);
       sseFailureCountRef.current++;
-      eventSource.close();
+      // Keep the EventSource open: the browser reconnects automatically and
+      // the endpoint sends the current full project state on every connection.
     };
 
     return () => {
       setIsSSEConnected(false);
       eventSource.close();
     };
-  }, [project?.id]);
+  }, [currentProject?.id, updateProject]);
 
   // Fallback polling ONLY when SSE fails: Poll during active operations
   useEffect(() => {
-    // Only poll if SSE has failed multiple times (not just temporarily disconnected)
-    if (isSSEConnected || sseFailureCountRef.current < 2) return;
+    // Poll only as a fallback while an operation is active. EventSource will
+    // continue attempting to reconnect in parallel.
+    if (isSSEConnected || sseFailureCountRef.current < 1) return;
 
-    const shouldPoll = isStartingServer || currentProject?.devServerStatus === 'starting';
+    const shouldPoll = isBuildActive || isStartingServer || currentProject?.devServerStatus === 'starting';
 
     if (!shouldPoll) return;
 
@@ -157,7 +154,7 @@ export default function PreviewPanel({
     return () => {
       clearInterval(interval);
     };
-  }, [isSSEConnected, isStartingServer, currentProject?.devServerStatus, refetch]);
+  }, [isSSEConnected, isBuildActive, isStartingServer, currentProject?.devServerStatus, refetch]);
 
   // Force refetch after stop completes (if SSE missed the event)
   useEffect(() => {
