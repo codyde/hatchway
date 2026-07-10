@@ -132,7 +132,7 @@ Use the tag selector in the web UI to configure your build:
 | Tag | Description | Options |
 |-----|-------------|---------|
 | `@model` | AI model to use | `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-6`, `gpt-5.2-codex` |
-| `@framework` | Project framework | Next.js, Vite, Astro, TanStack |
+| `@framework` | Project framework | Next.js, Vite, TanStack |
 | `@runner` | Which runner to use | Your connected runners |
 | `@brand` | Design theme | Sentry, Stripe, Vercel, and more |
 

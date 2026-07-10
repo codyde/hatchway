@@ -9,7 +9,7 @@ import ElementComment from './ElementComment';
 import { toggleSelectionMode } from '@hatchway/agent-core/lib/selection/injector';
 import { useElementEdits } from '@/hooks/useElementEdits';
 import { useHmrProxy } from '@/hooks/useHmrProxy';
-import StarfoxLoadingGame from './StarfoxLoadingGame';
+import LoadingGames from './LoadingGames';
 import { ServerRestartProgress } from './ServerRestartProgress';
 import { ServerRestarting } from './StatusAnimations';
 import {
@@ -707,7 +707,7 @@ export default function PreviewPanel({
         ) : (
           <div className="w-full h-full flex items-center justify-center text-muted-foreground">
             {isBuildActive ? (
-              <StarfoxLoadingGame />
+              <LoadingGames />
             ) : currentProject?.devServerStatus === 'restarting' ? (
               <div className="flex flex-col items-center gap-4 max-w-lg px-6">
                 <ServerRestartProgress 

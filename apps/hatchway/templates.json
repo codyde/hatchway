@@ -7,7 +7,6 @@
       "description": "Simple, fast React app with Vite - perfect for basic projects and prototypes",
       "repository": "github:codyde/template-reactvite",
       "branch": "main",
-
       "selection": {
         "keywords": [
           "simple",
@@ -43,7 +42,6 @@
           "Build a basic form"
         ]
       },
-
       "tech": {
         "framework": "vite",
         "version": "5.x",
@@ -52,17 +50,14 @@
         "packageManager": "pnpm",
         "nodeVersion": ">=20.0.0"
       },
-
       "setup": {
         "defaultPort": 5173,
         "installCommand": "pnpm install",
         "devCommand": "pnpm dev",
         "buildCommand": "pnpm build"
       },
-
       "ai": {
-        "systemPromptAddition": "This is a simple React + Vite project - the default for basic applications.\n\n**Key Patterns:**\n- Pure client-side React application\n- No backend or API needed\n- Fast development with Vite HMR\n- TypeScript for type safety\n- Tailwind CSS for styling\n\n**Directory Structure:**\n- src/ - React components and logic\n- src/components/ - Reusable components\n- src/App.tsx - Main application component\n\n**When to use:**\n- Simple UIs without server-side logic\n- Prototypes and demos\n- Learning projects\n- Any basic React application\n\n**When NOT to use:**\n- Need authentication or database (use Next.js)\n- Need static site generation (use Astro)",
-
+        "systemPromptAddition": "This is a simple React + Vite project - the default for basic applications.\n\n**Key Patterns:**\n- Pure client-side React application\n- No backend or API needed\n- Fast development with Vite HMR\n- TypeScript for type safety\n- Tailwind CSS for styling\n\n**Directory Structure:**\n- src/ - React components and logic\n- src/components/ - Reusable components\n- src/App.tsx - Main application component\n\n**When to use:**\n- Simple UIs without server-side logic\n- Prototypes and demos\n- Learning projects\n- Any basic React application\n\n**When NOT to use:**\n- Need authentication or database (use Next.js)\n- Prefer SSR/full-stack routing (use Next.js)",
         "includedFeatures": [
           "React 18 with TypeScript",
           "Vite 5 with fast HMR",
@@ -73,14 +68,12 @@
         ]
       }
     },
-
     {
       "id": "nextjs-fullstack",
       "name": "Next.js 15 Full-Stack",
       "description": "Modern full-stack with App Router, TypeScript, Tailwind, and shadcn/ui",
       "repository": "github:codyde/template-nextjs",
       "branch": "main",
-
       "selection": {
         "keywords": [
           "nextjs",
@@ -121,7 +114,6 @@
           "Build an admin panel with user management"
         ]
       },
-
       "tech": {
         "framework": "next",
         "version": "15.x",
@@ -131,17 +123,14 @@
         "packageManager": "pnpm",
         "nodeVersion": ">=20.0.0"
       },
-
       "setup": {
         "defaultPort": 3001,
         "installCommand": "pnpm install",
         "devCommand": "pnpm dev",
         "buildCommand": "pnpm build"
       },
-
       "ai": {
         "systemPromptAddition": "This is a Next.js 15 App Router project.\n\n**Key Patterns:**\n- Use Server Components by default (no 'use client' needed)\n- Add 'use client' ONLY when needed (useState, useEffect, event handlers)\n- API routes: app/api/[route]/route.ts with export async function GET/POST\n- Use TypeScript import type for type-only imports\n- Tailwind for styling with utility classes\n- shadcn/ui components are pre-installed in components/ui/\n\n**Directory Structure:**\n- app/ - App Router pages and layouts\n- components/ - Shared React components\n- lib/ - Utilities, types, helpers\n\n**After template is downloaded:**\n1. Install dependencies: cd {projectName} && pnpm install\n2. Components are ready to use: import { Button } from '@/components/ui/button'\n3. Create new pages in app/ directory",
-
         "includedFeatures": [
           "Pre-configured TypeScript with strict mode",
           "Tailwind CSS with custom config",
@@ -153,14 +142,12 @@
         ]
       }
     },
-
     {
       "id": "template_tanstackstart",
       "name": "TanStack Start (Blank)",
       "description": "Minimal TanStack Start + React + Tailwind scaffold for full-stack applications. Provides TanStack Router/Query wiring without opinionated auth or database layers.",
       "repository": "github:codyde/template-tanstackstart",
       "branch": "main",
-
       "selection": {
         "keywords": [
           "tanstack",
@@ -190,7 +177,6 @@
           "Experiment with TanStack Start SSR on a blank canvas"
         ]
       },
-
       "tech": {
         "framework": "tanstack",
         "version": "start",
@@ -199,95 +185,20 @@
         "packageManager": "pnpm",
         "nodeVersion": ">=20.10.0"
       },
-
       "setup": {
         "defaultPort": 3000,
         "installCommand": "pnpm install",
         "devCommand": "pnpm dev",
         "buildCommand": "pnpm build"
       },
-
       "ai": {
-        "systemPromptAddition": "This is a TanStack Start project built on React 19 with TanStack Router, TanStack Query, and Tailwind CSS. It is intentionally minimal so you can layer in auth, database, and domain logic.\n\n**Key Patterns:**\n- Define routes, loaders, and actions in `app/routes/` using TanStack Start conventions\n- Use TanStack Query for client data fetching; prefer server loaders for initial data\n- Tailwind CSS is preconfigured for styling; bring your own component library if needed\n- The template ships without auth/database; you are expected to scaffold these as part of the build\n\n**Directory Structure:**\n- app/routes/ - File-based routes with loaders/actions\n- app/components/ - Shared UI components\n- app/lib/ - Utilities/helpers you create\n\n**When to use:**\n- You want a clean TanStack Start foundation without extra opinions\n- Building full-stack React apps that will add custom data/auth layers\n- Exploring TanStack Router/Query workflows end-to-end\n\n**When NOT to use:**\n- Prefer an opinionated Next.js App Router experience\n- Need a static-only marketing site (use Astro)\n- Want a minimal SPA without SSR (use React + Vite)",
-
+        "systemPromptAddition": "This is a TanStack Start project built on React 19 with TanStack Router, TanStack Query, and Tailwind CSS. It is intentionally minimal so you can layer in auth, database, and domain logic.\n\n**Key Patterns:**\n- Define routes, loaders, and actions in `app/routes/` using TanStack Start conventions\n- Use TanStack Query for client data fetching; prefer server loaders for initial data\n- Tailwind CSS is preconfigured for styling; bring your own component library if needed\n- The template ships without auth/database; you are expected to scaffold these as part of the build\n\n**Directory Structure:**\n- app/routes/ - File-based routes with loaders/actions\n- app/components/ - Shared UI components\n- app/lib/ - Utilities/helpers you create\n\n**When to use:**\n- You want a clean TanStack Start foundation without extra opinions\n- Building full-stack React apps that will add custom data/auth layers\n- Exploring TanStack Router/Query workflows end-to-end\n\n**When NOT to use:**\n- Prefer an opinionated Next.js App Router experience\n- Want a minimal SPA without SSR (use React + Vite)",
         "includedFeatures": [
           "TanStack Router file-based routing scaffold",
           "TanStack Query integration hooked into React 19 defaults",
           "Tailwind CSS configured out of the box",
           "pnpm workspace setup with Vite dev tooling",
           "Ready-to-extend server actions and loaders"
-        ]
-      }
-    },
-
-    {
-      "id": "astro-static",
-      "name": "Astro Static Site",
-      "description": "Fast static site with optional React islands for interactivity",
-      "repository": "github:codyde/template-astro",
-      "branch": "main",
-
-      "selection": {
-        "keywords": [
-          "astro",
-          "static",
-          "ssg",
-          "blog",
-          "content",
-          "markdown",
-          "documentation",
-          "docs",
-          "landing",
-          "landing-page",
-          "portfolio",
-          "seo",
-          "performance",
-          "marketing"
-        ],
-        "useCases": [
-          "Static websites and landing pages",
-          "Blogs and content-heavy sites",
-          "Documentation sites and guides",
-          "Portfolio and showcase websites",
-          "Marketing pages requiring excellent SEO",
-          "Sites prioritizing performance and load times"
-        ],
-        "examples": [
-          "Build a personal blog with posts",
-          "Create a documentation site",
-          "Make a portfolio website",
-          "Build a company landing page",
-          "Create a marketing site with blog"
-        ]
-      },
-
-      "tech": {
-        "framework": "astro",
-        "version": "5.x",
-        "language": "typescript",
-        "styling": "tailwind",
-        "packageManager": "pnpm",
-        "nodeVersion": ">=20.0.0"
-      },
-
-      "setup": {
-        "defaultPort": 4321,
-        "installCommand": "pnpm install",
-        "devCommand": "pnpm dev",
-        "buildCommand": "pnpm build"
-      },
-
-      "ai": {
-        "systemPromptAddition": "This is an Astro static site generator project.\n\n**Key Patterns:**\n- Pages are .astro files with --- frontmatter at the top\n- File-based routing in src/pages/ (index.astro = homepage)\n- Use layouts in src/layouts/ for consistent page structure\n- Add React islands for interactivity: <Component client:load />\n- Content collections for blog posts/docs in src/content/\n\n**CRITICAL: Code Snippet Handling for Deployments:**\n- ALWAYS use <code set:html={'TheCode'} /> to properly fence code snippets\n- This prevents code from breaking during deployment builds\n- Never use regular <code>{code}</code> for multi-line or complex code snippets\n- Example: <code set:html={'const x = 1;\\nconst y = 2;'} />\n\n**Example .astro page:**\n```astro\n---\nimport Layout from '../layouts/Layout.astro'\nconst title = 'My Page'\n---\n<Layout title={title}>\n  <h1>{title}</h1>\n  <p>Static content, ultra fast!</p>\n</Layout>\n```\n\n**For interactivity, use React islands:**\n```astro\n---\nimport Counter from '../components/Counter.tsx'\n---\n<Counter client:load />\n```",
-
-        "includedFeatures": [
-          "Astro 5.x with TypeScript configured",
-          "Tailwind CSS with Astro integration",
-          "Example pages (index, about, blog)",
-          "Layout component with metadata",
-          "Content collections setup for blog",
-          "Sample blog posts in Markdown",
-          "React integration for islands"
         ]
       }
     }

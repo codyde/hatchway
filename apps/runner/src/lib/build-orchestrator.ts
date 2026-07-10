@@ -477,17 +477,13 @@ EXACT CLONE COMMANDS (use these exactly as shown):
 **For Next.js projects:**
   npx degit github:codyde/template-nextjs#main "${projectName}"
 
-**For Astro projects:**
-  npx degit github:codyde/template-astro#main "${projectName}"
-
 **For React + Node.js:**
   npx degit github:codyde/template-reactnode#main "${projectName}"
 
 Select based on user's request:
-- Astro, static, blog, docs, landing page → Use Astro template
 - Next.js, full-stack, API, database, auth → Use Next.js template
 - React + backend, SPA + API → Use React + Node template
-- Simple React app, prototype, basic UI → Use React/Vite template
+- Simple React app, prototype, basic UI, blog, docs, landing page → Use React/Vite template
 
 After cloning:
 1. cd ${projectName}
@@ -506,7 +502,7 @@ After cloning:
     sections.push(`## Workspace Rules
 - You are currently in the workspace directory.
 - After cloning, all commands should be run from inside the \`${projectName}\` directory.
-- Use relative paths from the project root (e.g., \`src/pages/index.astro\`).
+- Use relative paths from the project root (e.g., \`src/pages/index.tsx\`).
 - Never use absolute paths.`);
 
     sections.push(`## Quality Expectations
