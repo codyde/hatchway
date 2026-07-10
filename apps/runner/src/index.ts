@@ -43,7 +43,12 @@ import { orchestrateBuild } from "./lib/build-orchestrator.js";
 import { analyzeProject } from "./lib/project-analyzer.js";
 import { createProjectScopedPermissionHandler } from "./lib/permissions/project-scoped-handler.js";
 import { hmrProxyManager } from "./lib/hmr-proxy-manager.js";
-import { ensureProjectSkills } from "./lib/skills.js";
+import {
+  inspectDependencyState,
+  isDependencyInstallCommand,
+  recordDependencyState,
+  type DependencyStateSnapshot,
+} from "./lib/dependency-state.js";
 import { 
   initRunnerLogger, 
   getLogger,
@@ -190,6 +195,200 @@ type BuildQueryFn = (
   codexThreadId?: string,
   messageParts?: MessagePart[]
 ) => AsyncGenerator<unknown, void, unknown>;
+
+interface AgentBuildMetrics {
+  numTurns?: number;
+  durationMs?: number;
+  durationApiMs?: number;
+  totalCostUsd?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+}
+
+interface ToolTiming {
+  name: string;
+  category?: 'dependency-install';
+  durationMs: number;
+  failed: boolean;
+}
+
+interface BuildContext {
+  commandId: string;
+  sessionId: string;
+  projectId: string;
+  buildId: string;
+  agentId: string;
+  claudeModelId?: string;
+  modelId?: string;
+  projectDirectory?: string;
+  projectSlug?: string;
+  detectedFramework?: string;
+  startTime: number;
+  orchestrationStartedAt?: number;
+  orchestrationCompletedAt?: number;
+  agentStartedAt?: number;
+  firstChunkAt?: number;
+  agentCompletedAt?: number;
+  agentMetrics?: AgentBuildMetrics;
+  dependencyStateBefore?: DependencyStateSnapshot;
+  dependencyStateAfter?: DependencyStateSnapshot;
+  toolCallCount: number;
+  activeToolTimings: Map<string, { name: string; category?: 'dependency-install'; startedAt: number }>;
+  completedToolTimings: ToolTiming[];
+  abortController?: AbortController;
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function extractAgentBuildMetrics(message: Record<string, unknown>): AgentBuildMetrics | undefined {
+  const metrics = message.metrics && typeof message.metrics === 'object'
+    ? message.metrics as Record<string, unknown>
+    : {};
+  const usage = message.usage && typeof message.usage === 'object'
+    ? message.usage as Record<string, unknown>
+    : {};
+
+  const result: AgentBuildMetrics = {
+    numTurns: finiteNumber(metrics.numTurns ?? message.num_turns),
+    durationMs: finiteNumber(metrics.durationMs ?? message.duration_ms),
+    durationApiMs: finiteNumber(metrics.durationApiMs ?? message.duration_api_ms),
+    totalCostUsd: finiteNumber(metrics.totalCostUsd ?? message.total_cost_usd),
+    inputTokens: finiteNumber(metrics.inputTokens ?? usage.input_tokens),
+    outputTokens: finiteNumber(metrics.outputTokens ?? usage.output_tokens),
+    cacheReadInputTokens: finiteNumber(metrics.cacheReadInputTokens ?? usage.cache_read_input_tokens),
+    cacheCreationInputTokens: finiteNumber(metrics.cacheCreationInputTokens ?? usage.cache_creation_input_tokens),
+  };
+
+  return Object.values(result).some((value) => value !== undefined) ? result : undefined;
+}
+
+function totalTokens(metrics?: AgentBuildMetrics): number {
+  if (!metrics) return 0;
+  return (metrics.inputTokens ?? 0)
+    + (metrics.outputTokens ?? 0)
+    + (metrics.cacheReadInputTokens ?? 0)
+    + (metrics.cacheCreationInputTokens ?? 0);
+}
+
+function summarizeToolTimings(toolTimings: ToolTiming[]) {
+  const summary: Record<string, { count: number; totalMs: number; maxMs: number; failures: number }> = {};
+
+  for (const timing of toolTimings) {
+    const current = summary[timing.name] ?? { count: 0, totalMs: 0, maxMs: 0, failures: 0 };
+    current.count += 1;
+    current.totalMs += timing.durationMs;
+    current.maxMs = Math.max(current.maxMs, timing.durationMs);
+    if (timing.failed) current.failures += 1;
+    summary[timing.name] = current;
+  }
+
+  return summary;
+}
+
+function classifyToolTiming(
+  toolName: unknown,
+  input: unknown,
+): ToolTiming['category'] | undefined {
+  if (!input || typeof input !== 'object') return undefined;
+  const toolInput = input as Record<string, unknown>;
+  const command = [toolInput.command, toolInput.cmd, toolInput.script]
+    .find((value): value is string => typeof value === 'string');
+  if (!command) return undefined;
+
+  const isShellTool = typeof toolName === 'string' && /bash|shell|command|terminal/i.test(toolName);
+  const isDependencyInstall = isDependencyInstallCommand(command);
+  return isShellTool && isDependencyInstall ? 'dependency-install' : undefined;
+}
+
+function hasSuccessfulDependencyInstall(context: BuildContext): boolean {
+  return context.completedToolTimings.some(
+    timing => timing.category === 'dependency-install' && !timing.failed
+  );
+}
+
+function createBuildMetrics(
+  context: BuildContext,
+  status: 'completed' | 'failed',
+  endedAt: number,
+  extras: {
+    error?: string;
+    modifiedFileCount?: number;
+    completedTodoCount?: number;
+  } = {},
+) {
+  const elapsedMs = endedAt - context.startTime;
+  const orchestrationMs = context.orchestrationStartedAt && context.orchestrationCompletedAt
+    ? context.orchestrationCompletedAt - context.orchestrationStartedAt
+    : undefined;
+  const agentMs = context.agentStartedAt
+    ? (context.agentCompletedAt ?? endedAt) - context.agentStartedAt
+    : undefined;
+  const timeToFirstChunkMs = context.agentStartedAt && context.firstChunkAt
+    ? context.firstChunkAt - context.agentStartedAt
+    : undefined;
+  const measuredPhaseMs = (orchestrationMs ?? 0) + (agentMs ?? 0);
+  const measuredTotalTokens = totalTokens(context.agentMetrics);
+  const dependencyInstallTimings = context.completedToolTimings.filter(
+    timing => timing.category === 'dependency-install'
+  );
+  const dependencyInstallTotalMs = dependencyInstallTimings.reduce(
+    (total, timing) => total + timing.durationMs,
+    0,
+  );
+
+  return {
+    schemaVersion: 1,
+    status,
+    commandId: context.commandId,
+    projectId: context.projectId,
+    sessionId: context.sessionId,
+    agent: context.agentId,
+    model: context.modelId ?? context.claudeModelId,
+    ...(extras.error ? { error: extras.error.slice(0, 500) } : {}),
+    timings: {
+      totalMs: elapsedMs,
+      orchestrationMs,
+      agentMs,
+      timeToFirstChunkMs,
+      runnerOverheadMs: Math.max(0, elapsedMs - measuredPhaseMs),
+    },
+    agentMetrics: context.agentMetrics,
+    tokens: {
+      total: measuredTotalTokens,
+      input: context.agentMetrics?.inputTokens ?? 0,
+      output: context.agentMetrics?.outputTokens ?? 0,
+      cacheReadInput: context.agentMetrics?.cacheReadInputTokens ?? 0,
+      cacheCreationInput: context.agentMetrics?.cacheCreationInputTokens ?? 0,
+    },
+    tools: {
+      totalCalls: context.toolCallCount,
+      completedCalls: context.completedToolTimings.length,
+      unfinishedCalls: context.activeToolTimings.size,
+      byName: summarizeToolTimings(context.completedToolTimings),
+    },
+    dependencies: {
+      stateBefore: context.dependencyStateBefore?.status,
+      stateAfter: context.dependencyStateAfter?.status,
+      packageManager: context.dependencyStateBefore?.packageManager
+        ?? context.dependencyStateAfter?.packageManager,
+      installCalls: dependencyInstallTimings.length,
+      installTotalMs: dependencyInstallTotalMs,
+      installMaxMs: dependencyInstallTimings.reduce(
+        (max, timing) => Math.max(max, timing.durationMs),
+        0,
+      ),
+      installFailures: dependencyInstallTimings.filter(timing => timing.failed).length,
+    },
+    output: {
+      modifiedFileCount: extras.modifiedFileCount ?? 0,
+      completedTodoCount: extras.completedTodoCount ?? 0,
+    },
+  };
+}
 
 function resolveCodexItemType(
   item: Record<string, unknown> | undefined
@@ -1117,21 +1316,6 @@ export async function startRunner(options: RunnerOptions = {}) {
   // HTTP PERSISTENCE
   // DB writes go via HTTP to the build-events endpoint
   // ============================================================
-
-  interface BuildContext {
-    commandId: string;
-    sessionId: string;
-    projectId: string;
-    buildId: string;
-    agentId: string;
-    claudeModelId?: string;
-    // For auto-start dev server after build
-    projectDirectory?: string;
-    projectSlug?: string;
-    detectedFramework?: string;
-    // For cancellation support
-    abortController?: AbortController;
-  }
 
   const activeBuildContexts = new Map<string, BuildContext>();
 
@@ -2128,6 +2312,8 @@ export async function startRunner(options: RunnerOptions = {}) {
         break;
       }
       case "start-build": {
+        const buildReceivedAt = Date.now();
+
         // Use unified logger for build received
         const agent = (command.payload?.agent as string) || DEFAULT_AGENT;
         const claudeModelFromPayload = command.payload?.claudeModel;
@@ -2205,9 +2391,20 @@ export async function startRunner(options: RunnerOptions = {}) {
             buildId: `build-${command.id}`, // Correlation ID for session lookup
             agentId: agent,
             claudeModelId: agent === 'claude-code' ? claudeModel : undefined,
+            modelId: agent === 'claude-code'
+              ? claudeModel
+              : agent === 'factory-droid'
+                ? droidModel
+                : agent === 'openai-codex'
+                  ? CODEX_MODEL
+                  : String(claudeModel),
             // Store for auto-start after build completion
             projectDirectory,
             projectSlug,
+            startTime: buildReceivedAt,
+            toolCallCount: 0,
+            activeToolTimings: new Map(),
+            completedToolTimings: [],
             // Store abort controller for cancellation
             abortController: buildAbortController,
           });
@@ -2228,6 +2425,10 @@ export async function startRunner(options: RunnerOptions = {}) {
 
           // Orchestrate the build - handle templates, generate dynamic prompt
           log("orchestrating build...");
+          const activeBuildContext = activeBuildContexts.get(command.id);
+          if (activeBuildContext) {
+            activeBuildContext.orchestrationStartedAt = Date.now();
+          }
 
           // Log template if provided
           if (command.payload.templateId) {
@@ -2250,6 +2451,11 @@ export async function startRunner(options: RunnerOptions = {}) {
             tags: command.payload.tags, // Tag-based configuration
             conversationHistory: (command.payload as unknown as { conversationHistory: Array<{ role: string; content: string; timestamp: Date }> }).conversationHistory, // Pass conversation context (type will be updated after rebuild)
           });
+
+          if (activeBuildContext) {
+            activeBuildContext.orchestrationCompletedAt = Date.now();
+            activeBuildContext.dependencyStateBefore = orchestration.dependencyState;
+          }
 
           // Log template selection
           if (orchestration.template) {
@@ -2308,6 +2514,10 @@ export async function startRunner(options: RunnerOptions = {}) {
           buildLog(
             `   Template: ${orchestration.template?.name || "none"}`
           );
+
+          if (activeBuildContext) {
+            activeBuildContext.agentStartedAt = Date.now();
+          }
 
           const stream = await createBuildStream({
             projectId: command.projectId,
@@ -2403,6 +2613,11 @@ export async function startRunner(options: RunnerOptions = {}) {
             if (!loggedFirstChunk) {
               buildLog(` 📨 First chunk received from ${agentLabel}`);
               loggedFirstChunk = true;
+
+              const timingContext = activeBuildContexts.get(command.id);
+              if (timingContext && !timingContext.firstChunkAt) {
+                timingContext.firstChunkAt = Date.now();
+              }
             }
 
             // Log generation and tool usage
@@ -2412,6 +2627,14 @@ export async function startRunner(options: RunnerOptions = {}) {
               // The actual message is nested in a 'message' property
               const actualMessage =
                 (msg.message as Record<string, unknown>) || msg;
+
+              if (msg.type === 'result') {
+                const timingContext = activeBuildContexts.get(command.id);
+                const metrics = extractAgentBuildMetrics(msg);
+                if (timingContext && metrics) {
+                  timingContext.agentMetrics = metrics;
+                }
+              }
 
               // Handle assistant messages (conversation turn format)
               if (
@@ -2442,6 +2665,19 @@ export async function startRunner(options: RunnerOptions = {}) {
                   if (block.type === "tool_use") {
                     const toolName = block.name;
                     logger.tool(toolName, block.input as Record<string, unknown>);
+
+                    const timingContext = activeBuildContexts.get(command.id);
+                    const toolId = typeof block.id === 'string' ? block.id : undefined;
+                    if (timingContext) {
+                      timingContext.toolCallCount += 1;
+                      if (toolId) {
+                        timingContext.activeToolTimings.set(toolId, {
+                          name: typeof toolName === 'string' ? toolName : 'unknown',
+                          category: classifyToolTiming(toolName, block.input),
+                          startedAt: Date.now(),
+                        });
+                      }
+                    }
                     
                     if (DEBUG_BUILD) {
                       buildLog(`    Input: ${truncateJSON(block.input, 200)}`);
@@ -2460,6 +2696,20 @@ export async function startRunner(options: RunnerOptions = {}) {
                   if (block.type === "tool_result") {
                     const toolId = block.tool_use_id;
                     const isError = block.is_error;
+
+                    const timingContext = activeBuildContexts.get(command.id);
+                    if (timingContext && typeof toolId === 'string') {
+                      const activeTiming = timingContext.activeToolTimings.get(toolId);
+                      if (activeTiming) {
+                        timingContext.completedToolTimings.push({
+                          name: activeTiming.name,
+                          category: activeTiming.category,
+                          durationMs: Date.now() - activeTiming.startedAt,
+                          failed: Boolean(isError),
+                        });
+                        timingContext.activeToolTimings.delete(toolId);
+                      }
+                    }
 
                     // Handle different content formats
                     let content = "";
@@ -2607,6 +2857,11 @@ export async function startRunner(options: RunnerOptions = {}) {
             }
           }
 
+          const streamTimingContext = activeBuildContexts.get(command.id);
+          if (streamTimingContext) {
+            streamTimingContext.agentCompletedAt = Date.now();
+          }
+
           buildLog(` ═══════════════════════════════════════════════`);
           buildLog(` STREAM ENDED - Processing final chunks`);
           buildLog(` ═══════════════════════════════════════════════`);
@@ -2672,22 +2927,51 @@ export async function startRunner(options: RunnerOptions = {}) {
             log("Failed to detect runCommand:", error);
           }
 
+          const completedBuildContext = activeBuildContexts.get(command.id);
+          if (completedBuildContext) {
+            try {
+              completedBuildContext.dependencyStateAfter = hasSuccessfulDependencyInstall(completedBuildContext)
+                ? await recordDependencyState(projectDirectory)
+                : await inspectDependencyState(projectDirectory);
+            } catch (dependencyStateError) {
+              log('[build] Failed to record dependency state:', dependencyStateError);
+            }
+          }
+
           // Calculate build statistics
           const buildEndTime = Date.now();
-          const completedBuildContext = activeBuildContexts.get(command.id);
-          const elapsedSeconds = completedBuildContext 
-            ? (buildEndTime - (completedBuildContext as any).startTime || buildEndTime) / 1000 
+          const elapsedMs = completedBuildContext
+            ? buildEndTime - completedBuildContext.startTime
             : 0;
-          
-          // TODO: Get actual token usage from build stream when available
-          const totalTokens = 0; // Will be populated from usage events
+          const elapsedSeconds = elapsedMs / 1000;
+          const measuredTotalTokens = totalTokens(completedBuildContext?.agentMetrics);
           
           logger.buildComplete({
             elapsedTime: elapsedSeconds,
-            toolCallCount: filesModified.size + completedTodos.length, // Approximate from tracked data
-            totalTokens,
+            toolCallCount: completedBuildContext?.toolCallCount ?? 0,
+            totalTokens: measuredTotalTokens,
             directory: projectDirectory,
           });
+
+          if (completedBuildContext) {
+            const buildMetrics = createBuildMetrics(
+              completedBuildContext,
+              'completed',
+              buildEndTime,
+              {
+                modifiedFileCount: filesModified.size,
+                completedTodoCount: completedTodos.length,
+              },
+            );
+
+            buildLog(`[timing] ${JSON.stringify(buildMetrics)}`);
+            void persistBuildEventDirect(completedBuildContext, {
+              type: 'build-metrics',
+              metrics: buildMetrics,
+            }).catch((metricsError) => {
+              debugLog('Failed to persist build metrics:', metricsError);
+            });
+          }
 
           debugLog(`Total chunks processed: (stream ended)`);
 
@@ -2819,6 +3103,23 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
           // Clean up build context and session tracking on failure
           const failedContext = activeBuildContexts.get(command.id);
           if (failedContext) {
+            const failedAt = Date.now();
+            failedContext.agentCompletedAt ??= failedAt;
+            const buildMetrics = createBuildMetrics(
+              failedContext,
+              'failed',
+              failedAt,
+              { error: errorMessage },
+            );
+
+            buildLog(`[timing] ${JSON.stringify(buildMetrics)}`);
+            void persistBuildEventDirect(failedContext, {
+              type: 'build-metrics',
+              metrics: buildMetrics,
+            }).catch((metricsError) => {
+              debugLog('Failed to persist failed-build metrics:', metricsError);
+            });
+
             startedSessions.delete(failedContext.sessionId);
           }
           activeBuildContexts.delete(command.id);

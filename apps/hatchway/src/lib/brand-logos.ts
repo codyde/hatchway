@@ -4,7 +4,6 @@
  */
 export function getBrandLogo(brandValue: string): string | null {
   const logoMap: Record<string, string> = {
-    'sentry': '/logos/sentry.svg',
     'stripe': '/logos/stripe.svg',
     'vercel': '/logos/vercel.svg',
     'linear': '/logos/linear.svg',

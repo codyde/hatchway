@@ -273,36 +273,6 @@
   --muted-foreground: #4c566a;
 }
 
-/* Sentry Theme - Purple/Pink gradient */
-.theme-sentry {
-  --background: #1D142F;
-  --theme-primary: #a855f7;
-  --theme-secondary: #ec4899;
-  --theme-primary-muted: rgba(168, 85, 247, 0.2);
-  --theme-secondary-muted: rgba(236, 72, 153, 0.2);
-  --sidebar-gradient-from: #1D142F;
-  --sidebar-gradient-to: #31145F;
-  --theme-accent: #c084fc;
-  --theme-glow: rgba(168, 85, 247, 0.25);
-  --theme-glow-hover: rgba(168, 85, 247, 0.4);
-  --theme-button-text: #ffffff;
-  /* Input/Chat/Terminal */
-  --theme-input-bg: rgba(0, 0, 0, 0.4);
-  --theme-input-border: rgba(168, 85, 247, 0.3);
-  --theme-input-border-focus: rgba(168, 85, 247, 0.6);
-  --theme-terminal-bg: #181225;
-  --theme-chat-user-bg: rgba(168, 85, 247, 0.25);
-  --theme-chat-agent-bg: rgba(39, 39, 42, 0.7);
-  /* UI Component overrides */
-  --popover: #251a3d;
-  --popover-foreground: #f3e8ff;
-  --accent: rgba(168, 85, 247, 0.15);
-  --accent-foreground: #f3e8ff;
-  --border: rgba(168, 85, 247, 0.25);
-  --muted: #2d1f4a;
-  --muted-foreground: #9f7aea;
-}
-
 /* Dark Theme - Traditional dark mode with neutral grays */
 .theme-dark {
   --background: #121212;

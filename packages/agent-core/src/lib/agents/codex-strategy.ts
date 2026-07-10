@@ -85,7 +85,7 @@ Apply the current request in context of this conversation.`;
   sections.push(`## Workspace Rules
 - ${context.isNewProject ? `After cloning, prefix ALL bash commands with "cd ${context.projectName} &&"` : 'Operate inside the workspace directory'}
 - Each bash command runs in a fresh shell - cd does not persist between commands
-- ${context.isNewProject ? `Example: bash -lc 'cd ${context.projectName} && npm install'` : 'Use relative paths for file operations'}
+- ${context.isNewProject ? `Example: bash -lc 'cd ${context.projectName} && npm install --prefer-offline --no-audit --no-fund'` : 'Use relative paths for file operations'}
 - Provide complete file contents for every modification`);
 
   sections.push(`## Task Tracking - Internal System (NOT A TOOL)
@@ -98,8 +98,8 @@ Simply include a JSON code block in your response like this:
 \`\`\`json
 {"todos":[
   {"content":"Clone template","status":"completed","activeForm":"Cloned template"},
-  {"content":"Install dependencies","status":"in_progress","activeForm":"Installing dependencies"},
-  {"content":"Implement features","status":"pending","activeForm":"Implementing features"}
+  {"content":"Implement features","status":"in_progress","activeForm":"Implementing features"},
+  {"content":"Install dependencies once","status":"pending","activeForm":"Installing dependencies"}
 ]}
 \`\`\`
 
@@ -143,8 +143,8 @@ Then include a JSON code block in your response:
 \`\`\`json
 {"todos":[
   {"content":"Clone and configure template","status":"in_progress","activeForm":"Cloning and configuring template"},
-  {"content":"Install dependencies","status":"pending","activeForm":"Installing dependencies"},
   {"content":"Implement features","status":"pending","activeForm":"Implementing features"},
+  {"content":"Install dependencies once","status":"pending","activeForm":"Installing dependencies"},
   ...as many as needed...
   {"content":"Verify build","status":"pending","activeForm":"Verifying build"}
 ]}
@@ -164,16 +164,17 @@ EOF'
 
 After setup, include updated JSON code block (mark setup as "completed")
 
-STEP 3: INSTALL DEPENDENCIES
-   bash -lc 'cd ${context.projectName} && npm install'
-
-After installing, include updated JSON code block
-
-STEP 4: IMPLEMENT ALL FEATURES
+STEP 3: IMPLEMENT ALL FEATURES AND DEPENDENCY CHANGES
    - Modify template files to deliver the requested functionality
    - Use: bash -lc 'cd ${context.projectName} && cat > filepath << EOF\n...\nEOF'
    - Implement EVERY requested feature completely
+   - Finish all package.json dependency changes before installing
    - After each major feature, include updated JSON code block
+
+STEP 4: INSTALL DEPENDENCIES ONCE
+   bash -lc 'cd ${context.projectName} && npm install --prefer-offline --no-audit --no-fund'
+
+After installing, include updated JSON code block
 
 STEP 5: VERIFY BUILD
    bash -lc 'cd ${context.projectName} && npm run build'
@@ -206,8 +207,8 @@ Then include a JSON code block in your response:
 \`\`\`json
 {"todos":[
   {"content":"Select and clone template","status":"in_progress","activeForm":"Selecting and cloning template"},
-  {"content":"Install dependencies","status":"pending","activeForm":"Installing dependencies"},
   ...as many tasks as needed...
+  {"content":"Install dependencies once","status":"pending","activeForm":"Installing dependencies"},
   {"content":"Verify build","status":"pending","activeForm":"Verifying build"}
 ]}
 \`\`\`
@@ -223,16 +224,17 @@ STEP 2: CLONE AND CONFIGURE
 
 After setup, include updated JSON code block (mark setup as "completed")
 
-STEP 3: INSTALL DEPENDENCIES
-   bash -lc 'cd ${context.projectName} && npm install'
-
-After installing, include updated JSON code block
-
-STEP 4: IMPLEMENT ALL FEATURES
+STEP 3: IMPLEMENT ALL FEATURES AND DEPENDENCY CHANGES
    - Modify template files to deliver requested functionality
    - ALL commands: bash -lc 'cd ${context.projectName} && ...'
    - Implement EVERY requested feature completely
+   - Finish all package.json dependency changes before installing
    - After each major feature, include updated JSON code block
+
+STEP 4: INSTALL DEPENDENCIES ONCE
+   bash -lc 'cd ${context.projectName} && npm install --prefer-offline --no-audit --no-fund'
+
+After installing, include updated JSON code block
 
 STEP 5: VERIFY BUILD
    bash -lc 'cd ${context.projectName} && npm run build'

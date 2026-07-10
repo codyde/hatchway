@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 
 // Theme names for the TUI
-export type ThemeName = 'sentry' | 'ocean' | 'ember' | 'forest' | 'noir';
+export type ThemeName = 'ocean' | 'ember' | 'forest' | 'noir';
 
 export interface RunnerConfig {
   version: string;

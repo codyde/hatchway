@@ -91,7 +91,7 @@ railway logs --service runner
 
 **Optional Enhancements:**
 - Deploy multiple runners for redundancy
-- Set up Sentry monitoring for runner
+- Set up structured monitoring for the runner
 - Configure auto-scaling (Railway Pro)
 - Implement workspace cleanup cron job
 

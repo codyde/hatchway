@@ -21,7 +21,7 @@ function buildDroidSections(context: AgentStrategyContext): string[] {
 - Location: ${context.workingDirectory}
 - Operation type: ${context.operationType}
 
-The template has already been downloaded. Install dependencies and customize the scaffold to satisfy the request.`);
+The template has already been downloaded. Customize the scaffold to satisfy the request; follow the dependency-state instructions below for installation.`);
   } else {
     let existingProjectSection = `## Existing Project Context
 
@@ -52,7 +52,7 @@ Review the current codebase and apply the requested changes without re-scaffoldi
 - Provide complete file contents without placeholders.`);
 
   if (context.fileTree) {
-    sections.push(`## Project Structure
+    sections.push(`## Project Manifest
 ${context.fileTree}`);
   }
 

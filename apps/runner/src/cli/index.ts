@@ -7,7 +7,7 @@
 // pnpm postinstall doesn't always run reliably for global installs from URLs
 //
 // NOTE: @hatchway/agent-core is bundled directly into dist/ by tsup,
-// so we don't need to check for it. But vendor packages (Sentry, etc.) still
+// so we don't need to check for it. But other vendor packages still
 // need to be installed from the vendor/ tarballs.
 import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';

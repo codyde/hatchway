@@ -16,5 +16,5 @@ cmds = [
 cmd = "pnpm start"
 
 # Note: This builds all services. Override the start command in Railway settings:
-# - Sentryvibe service: pnpm start (or pnpm --filter shipbuilder start)
+# - Hatchway service: pnpm start (or pnpm --filter hatchway start)
 # - Broker service: pnpm start:broker (or pnpm --filter shipbuilder-broker start)

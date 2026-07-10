@@ -69,7 +69,7 @@ ${moodGuidance}
 - Location: ${context.workingDirectory}
 - Operation type: ${context.operationType}
 
-The template has already been downloaded. Install dependencies and customize the scaffold to satisfy the request.`);
+The template has already been downloaded. Customize the scaffold to satisfy the request; follow the dependency-state instructions below for installation.`);
   } else {
     // EXISTING PROJECT - Include conversation history for context
     let existingProjectSection = `## Existing Project Context
@@ -112,7 +112,7 @@ Apply the current request in the context of this conversation.`;
 - Provide complete updates without placeholders.`);
 
   if (context.fileTree) {
-    sections.push(`## Project Structure Snapshot
+    sections.push(`## Project Manifest
 ${context.fileTree}`);
   }
 

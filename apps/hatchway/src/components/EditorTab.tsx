@@ -37,7 +37,7 @@ export default function EditorTab({ projectId }: EditorTabProps) {
     });
 
     // Define custom theme with purple background
-    monaco.editor.defineTheme('sentry-dark', {
+    monaco.editor.defineTheme('hatchway-dark', {
       base: 'vs-dark',
       inherit: true,
       rules: [],
@@ -45,7 +45,7 @@ export default function EditorTab({ projectId }: EditorTabProps) {
         'editor.background': '#181225',
       },
     });
-    monaco.editor.setTheme('sentry-dark');
+    monaco.editor.setTheme('hatchway-dark');
   };
 
   const fetchFileTree = useCallback(async () => {
@@ -242,7 +242,7 @@ export default function EditorTab({ projectId }: EditorTabProps) {
                 value={fileContent}
                 onChange={handleEditorChange}
                 onMount={handleEditorMount}
-                theme="sentry-dark"
+                theme="hatchway-dark"
                 defaultLanguage="typescript"
                 options={{
                   fontSize: 14,

@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 
-export type ThemeName = "dark" | "light" | "tokyonight" | "onedark" | "gruvbox" | "dracula" | "nord" | "sentry";
+export type ThemeName = "dark" | "light" | "tokyonight" | "onedark" | "gruvbox" | "dracula" | "nord";
 
 export interface ThemeInfo {
   name: ThemeName;
@@ -84,15 +84,6 @@ export const THEMES: Record<ThemeName, ThemeInfo> = {
     colors: {
       primary: "#88c0d0",
       secondary: "#81a1c1",
-    },
-  },
-  sentry: {
-    name: "sentry",
-    label: "Sentry",
-    description: "Purple & pink gradient",
-    colors: {
-      primary: "#a855f7",
-      secondary: "#ec4899",
     },
   },
 };

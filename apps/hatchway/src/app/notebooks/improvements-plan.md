@@ -12,7 +12,7 @@
 - Add error details modal when build fails
 - Show actionable error messages from API
 - Add "Retry" button
-- Log errors to Sentry with context
+- Log errors through the structured application logger with context
 
 **Implementation:**
 ```typescript
@@ -349,8 +349,7 @@ Looking at your logs, the application is doing A LOT of work:
 1. Review this plan with team
 2. Prioritize which items align with product goals
 3. Create GitHub issues for Phase 1 items
-4. Set up Sentry to track errors better
+4. Set up structured error tracking and alerting
 5. Add basic analytics to measure impact
 
 Would you like me to implement any of these improvements?
-

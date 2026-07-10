@@ -14,7 +14,7 @@ hatchway runner
 ```
 
 That's it! The CLI will:
-1. Open your browser to authenticate (GitHub or Sentry SSO)
+1. Open your browser to authenticate with GitHub
 2. Automatically generate and store your runner token
 3. Connect to hatchway.sh and start listening for builds
 
@@ -209,7 +209,7 @@ hatchway runner  # Re-authenticate
 ## FAQ
 
 **Q: Do I need an API key?**
-A: No! Authentication is handled via OAuth (GitHub or Sentry SSO). The CLI automatically manages tokens.
+A: No! Authentication is handled through GitHub OAuth. The CLI automatically manages tokens.
 
 **Q: Where are my projects stored?**
 A: In `~/hatchway-projects/` by default. Check with `hatchway config get workspace`.

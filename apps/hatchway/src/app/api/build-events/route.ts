@@ -251,6 +251,7 @@ interface BuildEventPayload {
     delta?: string;
     message?: string;
     data?: { message?: string };
+    metrics?: Record<string, unknown>;
   };
 }
 
@@ -710,6 +711,20 @@ export async function POST(request: Request) {
             state: 'error',
           });
         }
+        break;
+      }
+
+      case 'build-metrics': {
+        // Deliberately log a single structured record instead of adding a schema
+        // migration in the first observability slice. Railway/log collectors can
+        // query this stable prefix and parse the JSON payload.
+        console.log(`[build-metrics] ${JSON.stringify({
+          projectId,
+          sessionId,
+          buildId,
+          commandId,
+          ...(event.metrics ?? {}),
+        })}`);
         break;
       }
 
