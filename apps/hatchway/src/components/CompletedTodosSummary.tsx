@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronUp, Circle, Loader2 } from 'lucide-react';
 import type { TodoItem } from '@/types/generation';
 
 interface CompletedTodosSummaryProps {
@@ -16,6 +16,7 @@ interface CompletedTodosSummaryProps {
  */
 export function CompletedTodosSummary({ todos, defaultExpanded = false }: CompletedTodosSummaryProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const panelId = useId();
   const completedCount = todos.filter(t => t.status === 'completed').length;
 
   if (todos.length === 0) return null;
@@ -24,7 +25,10 @@ export function CompletedTodosSummary({ todos, defaultExpanded = false }: Comple
     <div>
       {/* Expandable header */}
       <button
-        onClick={() => setIsExpanded(!isExpanded)}
+        type="button"
+        aria-expanded={isExpanded}
+        aria-controls={panelId}
+        onClick={() => setIsExpanded(expanded => !expanded)}
         className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
       >
         <div className="flex items-center gap-1.5">
@@ -42,6 +46,7 @@ export function CompletedTodosSummary({ todos, defaultExpanded = false }: Comple
       <AnimatePresence>
         {isExpanded && (
           <motion.div
+            id={panelId}
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -51,8 +56,17 @@ export function CompletedTodosSummary({ todos, defaultExpanded = false }: Comple
             <div className="mt-2 space-y-1 pl-2 border-l border-border">
               {todos.map((todo, idx) => (
                 <div key={idx} className="flex items-start gap-2 text-xs py-0.5">
-                  <CheckCircle2 className="w-3 h-3 text-green-600/70 dark:text-green-400/60 flex-shrink-0 mt-0.5" />
-                  <span className="text-muted-foreground">{todo.content}</span>
+                  {todo.status === 'completed' ? (
+                    <CheckCircle2 aria-hidden="true" className="w-3 h-3 text-green-600/70 dark:text-green-400/60 flex-shrink-0 mt-0.5" />
+                  ) : todo.status === 'in_progress' ? (
+                    <Loader2 aria-hidden="true" className="w-3 h-3 text-theme-primary animate-spin flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <Circle aria-hidden="true" className="w-3 h-3 text-muted-foreground flex-shrink-0 mt-0.5" />
+                  )}
+                  <span className={todo.status === 'in_progress' ? 'text-foreground' : 'text-muted-foreground'}>
+                    <span className="sr-only">{todo.status.replace('_', ' ')}: </span>
+                    {todo.content}
+                  </span>
                 </div>
               ))}
             </div>

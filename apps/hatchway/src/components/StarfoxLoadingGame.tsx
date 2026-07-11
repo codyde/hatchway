@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useCallback, useState } from "react"
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react"
 
 type Vec = { x: number; y: number }
 type Bullet = Vec & { vy: number; vx: number; damage: number }
@@ -36,6 +36,7 @@ const SHIP_SPEED = 390
 const BASE_FIRE_COOLDOWN = 0.12
 const MAX_LIVES = 3
 const HI_KEY = "hatchway-starfox-hi"
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)"
 
 function rand(min: number, max: number) {
   return min + Math.random() * (max - min)
@@ -48,6 +49,8 @@ function clamp(v: number, min: number, max: number) {
 export default function StarfoxLoadingGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const instructionsId = useId()
+  const reducedMotion = usePrefersReducedMotion()
   const [score, setScore] = useState(0)
   const [highScore, setHighScore] = useState(0)
   const [lives, setLives] = useState(MAX_LIVES)
@@ -71,8 +74,6 @@ export default function StarfoxLoadingGame() {
     y: 0,
     active: false,
   })
-  const restartRef = useRef<(() => void) | null>(null)
-
   useEffect(() => {
     try {
       const saved = Number(localStorage.getItem(HI_KEY) || "0")
@@ -101,6 +102,8 @@ export default function StarfoxLoadingGame() {
   }, [])
 
   useEffect(() => {
+    if (reducedMotion) return
+
     const canvas = canvasRef.current
     const wrap = wrapRef.current
     if (!canvas || !wrap) return
@@ -153,8 +156,6 @@ export default function StarfoxLoadingGame() {
       setGameOver(false)
       setWave(1)
     }
-    restartRef.current = resetRun
-
     const resize = () => {
       const rect = wrap.getBoundingClientRect()
       dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -293,20 +294,30 @@ export default function StarfoxLoadingGame() {
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.target !== canvas) return
+
       const k = e.key.toLowerCase()
-      if (
-        ["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "w", "a", "s", "d", "r"].includes(
-          k
-        ) ||
-        e.code === "Space"
-      ) {
-        e.preventDefault()
+      if (k === "escape") {
+        keysRef.current.clear()
+        mouseRef.current.active = false
+        canvas.blur()
+        return
       }
+
+      const isGameplayKey =
+        ["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "w", "a", "s", "d"].includes(
+          k
+        ) || e.code === "Space"
+      const isRestartKey = gameOverRef.current && (k === "r" || k === "enter")
+      if (!isGameplayKey && !isRestartKey) return
+
+      e.preventDefault()
       keysRef.current.add(k)
       if (k === " " || e.code === "Space") keysRef.current.add("space")
-      if ((k === "r" || k === "enter") && gameOverRef.current) resetRun()
+      if (isRestartKey) resetRun()
     }
     const onKeyUp = (e: KeyboardEvent) => {
+      if (e.target !== canvas) return
       const k = e.key.toLowerCase()
       keysRef.current.delete(k)
       if (k === " " || e.code === "Space") keysRef.current.delete("space")
@@ -321,22 +332,28 @@ export default function StarfoxLoadingGame() {
       const rect = canvas.getBoundingClientRect()
       mouseRef.current.x = e.clientX - rect.left
       mouseRef.current.y = e.clientY - rect.top
-      canvas.focus()
+      canvas.focus({ preventScroll: true })
+      canvas.setPointerCapture(e.pointerId)
       if (gameOverRef.current) resetRun()
     }
-    const onPointerUp = () => {
+    const onPointerUp = (e: PointerEvent) => {
+      mouseRef.current.active = false
+      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId)
+    }
+    const releaseInput = () => {
+      keysRef.current.clear()
       mouseRef.current.active = false
     }
 
     resize()
     window.addEventListener("resize", resize)
-    window.addEventListener("keydown", onKeyDown, { passive: false })
-    window.addEventListener("keyup", onKeyUp)
+    canvas.addEventListener("keydown", onKeyDown)
+    canvas.addEventListener("keyup", onKeyUp)
+    canvas.addEventListener("blur", releaseInput)
     canvas.addEventListener("pointermove", onPointerMove)
     canvas.addEventListener("pointerdown", onPointerDown)
-    window.addEventListener("pointerup", onPointerUp)
-    canvas.tabIndex = 0
-    canvas.focus()
+    canvas.addEventListener("pointerup", onPointerUp)
+    canvas.addEventListener("pointercancel", onPointerUp)
 
     const loop = (now: number) => {
       if (!running) return
@@ -680,23 +697,34 @@ export default function StarfoxLoadingGame() {
       running = false
       cancelAnimationFrame(raf)
       window.removeEventListener("resize", resize)
-      window.removeEventListener("keydown", onKeyDown)
-      window.removeEventListener("keyup", onKeyUp)
+      canvas.removeEventListener("keydown", onKeyDown)
+      canvas.removeEventListener("keyup", onKeyUp)
+      canvas.removeEventListener("blur", releaseInput)
       canvas.removeEventListener("pointermove", onPointerMove)
       canvas.removeEventListener("pointerdown", onPointerDown)
-      window.removeEventListener("pointerup", onPointerUp)
+      canvas.removeEventListener("pointerup", onPointerUp)
+      canvas.removeEventListener("pointercancel", onPointerUp)
     }
-  }, [bumpScore])
+  }, [bumpScore, reducedMotion])
+
+  if (reducedMotion) {
+    return <ReducedMotionMeteorRun />
+  }
 
   return (
     <div ref={wrapRef} className="relative w-full h-full overflow-hidden bg-[#070716]">
       <canvas
         ref={canvasRef}
-        className="absolute inset-0 w-full h-full outline-none cursor-crosshair"
-        aria-label="Starfox loading mini-game"
-      />
+        tabIndex={0}
+        className="absolute inset-0 h-full w-full cursor-crosshair outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-300"
+        aria-label="Meteor Run space-flying loading game"
+        aria-describedby={instructionsId}
+        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight W A S D Space Escape"
+      >
+        Meteor Run is a keyboard and pointer-controlled space-flying game.
+      </canvas>
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4 pr-28">
+      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4">
         <div className="rounded-lg border border-violet-500/30 bg-black/40 px-3 py-2 backdrop-blur-sm">
           <p className="text-[10px] uppercase tracking-[0.2em] text-violet-300/80">Building</p>
           <p className="text-sm font-semibold text-white">Meteor Run · Wave {wave}</p>
@@ -725,13 +753,71 @@ export default function StarfoxLoadingGame() {
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-3">
-        <div className="rounded-full border border-white/10 bg-black/50 px-4 py-1.5 text-[11px] text-gray-300 backdrop-blur-sm">
-          <span className="text-white/90">WASD</span> move ·{" "}
-          <span className="text-white/90">Space</span> fire · grab{" "}
+        <div
+          id={instructionsId}
+          className="max-w-full rounded-xl border border-white/10 bg-black/50 px-4 py-1.5 text-center text-[11px] text-gray-300 backdrop-blur-sm sm:rounded-full"
+        >
+          Click or Tab to focus · <span className="text-white/90">WASD/arrows</span> move ·{" "}
+          <span className="text-white/90">Space</span> fire ·{" "}
+          <span className="text-white/90">Escape</span> leave · grab{" "}
           <span className="text-sky-300">S</span>/<span className="text-violet-300">G</span>/
           <span className="text-pink-300">+</span> power-ups
           {gameOver ? " · R retry" : ""}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function usePrefersReducedMotion() {
+  return useSyncExternalStore(
+    subscribeToReducedMotion,
+    getReducedMotionPreference,
+    getServerReducedMotionPreference
+  )
+}
+
+function subscribeToReducedMotion(onPreferenceChange: () => void) {
+  const media = window.matchMedia(REDUCED_MOTION_QUERY)
+  media.addEventListener("change", onPreferenceChange)
+  return () => media.removeEventListener("change", onPreferenceChange)
+}
+
+function getReducedMotionPreference() {
+  return window.matchMedia(REDUCED_MOTION_QUERY).matches
+}
+
+function getServerReducedMotionPreference() {
+  return true
+}
+
+function ReducedMotionMeteorRun() {
+  return (
+    <div
+      className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#070716] px-6 text-center"
+      role="img"
+      aria-label="Meteor Run space-flying loading scene. Animation is paused because reduced motion is enabled."
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,rgba(124,58,237,0.22),transparent_38%),radial-gradient(circle_at_80%_70%,rgba(219,39,119,0.16),transparent_35%)]" />
+      <div className="absolute left-[14%] top-[18%] h-1 w-1 rounded-full bg-slate-200/70" />
+      <div className="absolute left-[72%] top-[22%] h-1.5 w-1.5 rounded-full bg-slate-200/60" />
+      <div className="absolute left-[38%] top-[34%] h-1 w-1 rounded-full bg-slate-200/50" />
+      <div className="absolute left-[84%] top-[48%] h-1 w-1 rounded-full bg-slate-200/70" />
+      <div className="absolute left-[20%] top-[68%] h-1.5 w-1.5 rounded-full bg-slate-200/50" />
+      <div className="relative rounded-2xl border border-violet-400/20 bg-black/40 px-8 py-6 backdrop-blur-sm">
+        <p className="text-[10px] uppercase tracking-[0.2em] text-violet-300/80">Building</p>
+        <svg
+          className="mx-auto my-4 h-16 w-16 text-violet-300"
+          viewBox="0 0 64 64"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path d="M32 5 43 38 32 33 21 38 32 5Z" fill="currentColor" />
+          <path d="m21 34-12 15 18-7M43 34l12 15-18-7" stroke="currentColor" strokeWidth="4" />
+          <path d="M27 42h10l-5 16-5-16Z" fill="#38bdf8" />
+        </svg>
+        <p className="text-sm font-semibold text-white">Meteor Run</p>
+        <p className="mt-2 text-xs text-gray-400">Animation paused for reduced motion</p>
       </div>
     </div>
   )

@@ -10,7 +10,13 @@ import { eq, desc, inArray, and, sql } from 'drizzle-orm';
 import { deserializeGenerationState } from '@hatchway/agent-core/lib/generation-persistence';
 import { cleanupStuckBuilds } from '@hatchway/agent-core/lib/runner/persistent-event-processor';
 import { requireProjectOwnership, handleAuthError } from '@/lib/auth-helpers';
-import type { GenerationState, ToolCall, TodoItem, TextMessage } from '@/types/generation';
+import type {
+  GenerationSessionStatus,
+  GenerationState,
+  ToolCall,
+  TodoItem,
+  TextMessage,
+} from '@/types/generation';
 
 function serializeContent(content: unknown): string {
   if (typeof content === 'string') {
@@ -91,10 +97,15 @@ export async function GET(
         .orderBy(desc(generationSessions.startedAt)),
     ]);
 
-    const formattedMessages = projectMessages.map(msg => ({
-      ...msg,
-      content: parseMessageContent(msg.content),
-    }));
+    const formattedMessages = projectMessages.map((msg) => {
+      const content = parseMessageContent(msg.content);
+      return {
+        ...msg,
+        content,
+        parts: Array.isArray(content) ? content : undefined,
+        timestamp: msg.createdAt,
+      };
+    });
 
     const sessionIds = sessions.map(session => session.id);
 
@@ -122,6 +133,7 @@ export async function GET(
     const sessionsWithRelations = sessions.map(session => {
       const sessionTodos = todos.filter(todo => todo.sessionId === session.id);
       const sessionTools = toolCalls.filter(tool => tool.sessionId === session.id);
+      let effectiveSessionStatus = session.status as GenerationSessionStatus;
 
       let hydratedState: GenerationState | null = null;
       let rawStateObj: Record<string, unknown> | null = null;
@@ -248,11 +260,12 @@ export async function GET(
           });
           hydratedState.isActive = false;
           hydratedState.endTime = hydratedState.endTime ?? new Date();
+          effectiveSessionStatus = isStaleAnalyzing ? 'failed' : 'completed';
 
           // Update session status in background (don't block response)
           db.update(generationSessions)
             .set({
-              status: isStaleAnalyzing ? 'failed' : 'completed',
+              status: effectiveSessionStatus,
               endedAt: hydratedState.endTime,
               updatedAt: new Date()
             })
@@ -261,8 +274,16 @@ export async function GET(
         }
       }
 
+      if (hydratedState) {
+        hydratedState.requestMessageId = session.requestMessageId;
+        hydratedState.sessionStatus = effectiveSessionStatus;
+        hydratedState.isActive = effectiveSessionStatus === 'active' && hydratedState.isActive;
+      }
+
       return {
         session,
+        requestMessageId: session.requestMessageId,
+        status: effectiveSessionStatus,
         todos: sessionTodos,
         tools: sessionTools,
         hydratedState,
@@ -293,7 +314,7 @@ export async function POST(
     // Verify user owns this project
     await requireProjectOwnership(id);
 
-    const { role, content, parts } = await req.json();
+    const { id: messageId, role, content, parts, timestamp } = await req.json();
 
     if (!role) {
       return NextResponse.json({ error: 'Role is required' }, { status: 400 });
@@ -310,6 +331,15 @@ export async function POST(
       return NextResponse.json({ error: 'Role must be "user" or "assistant"' }, { status: 400 });
     }
 
+    if (messageId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(messageId)) {
+      return NextResponse.json({ error: 'Message id must be a UUID' }, { status: 400 });
+    }
+
+    const createdAt = timestamp ? new Date(timestamp) : undefined;
+    if (createdAt && Number.isNaN(createdAt.getTime())) {
+      return NextResponse.json({ error: 'Invalid message timestamp' }, { status: 400 });
+    }
+
     // Serialize content (may be string or parts array)
     let serializedContent: string;
     if (parts && parts.length > 0) {
@@ -321,15 +351,20 @@ export async function POST(
     const [newMessage] = await db
       .insert(messages)
       .values({
+        ...(messageId ? { id: messageId } : {}),
         projectId: id,
         role: role,
         content: serializedContent,
+        ...(createdAt ? { createdAt } : {}),
       })
       .returning();
 
+    const parsedContent = parseMessageContent(newMessage.content);
     const formatted = {
       ...newMessage,
-      content: parseMessageContent(newMessage.content),
+      content: parsedContent,
+      parts: Array.isArray(parsedContent) ? parsedContent : undefined,
+      timestamp: newMessage.createdAt,
     };
 
     return NextResponse.json({ message: formatted });

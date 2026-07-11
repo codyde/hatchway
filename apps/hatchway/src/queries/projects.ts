@@ -56,9 +56,14 @@ async function fetchProjects(): Promise<ProjectsResponse> {
 async function fetchProject(projectId: string): Promise<Project> {
   const res = await fetch(`/api/projects/${projectId}`);
   if (!res.ok) {
-    throw new Error('Failed to fetch project');
+    const data = await res.json().catch(() => null) as { error?: string; details?: string } | null;
+    throw new Error(data?.details || data?.error || `Failed to fetch project (${res.status})`);
   }
-  return res.json();
+  const data = await res.json() as { project: Project };
+  if (!data.project) {
+    throw new Error('Project response did not include a project');
+  }
+  return data.project;
 }
 
 async function fetchProjectFiles(projectId: string): Promise<ProjectFilesResponse> {
@@ -176,13 +181,15 @@ export interface MessagePart {
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
-  content: string;
+  content: string | MessagePart[] | Record<string, unknown>;
   parts?: MessagePart[];
-  timestamp: Date;
+  timestamp: Date | string | number;
 }
 
 export interface Session {
   id: string;
+  requestMessageId?: string | null;
+  status?: 'active' | 'completed' | 'failed' | 'cancelled';
   hydratedState?: unknown;
 }
 

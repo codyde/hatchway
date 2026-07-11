@@ -64,6 +64,13 @@
       "when": 1768300800000,
       "tag": "0014_add_github_integration",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783756942000,
+      "tag": "0017_add_generation_request_message",
+      "breakpoints": true
     }
   ]
 }

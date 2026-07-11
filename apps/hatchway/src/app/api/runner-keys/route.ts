@@ -45,7 +45,10 @@ export async function GET() {
 
     return NextResponse.json({ keys });
   } catch (error) {
-    return handleAuthError(error);
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+    console.error("Failed to list runner keys:", error);
+    return NextResponse.json({ error: "Failed to list runner keys" }, { status: 500 });
   }
 }
 
@@ -97,6 +100,9 @@ export async function POST(request: NextRequest) {
       message: "Key created. Copy it now - it won't be shown again.",
     });
   } catch (error) {
-    return handleAuthError(error);
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+    console.error("Failed to create runner key:", error);
+    return NextResponse.json({ error: "Failed to create runner key" }, { status: 500 });
   }
 }

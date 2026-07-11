@@ -1,12 +1,11 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Command } from 'cmdk';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
 import { useProjects } from '@/contexts/ProjectContext';
-import { useRunner } from '@/contexts/RunnerContext';
 // SDK mode selection removed - now controlled via environment variables
 import { useToast } from '@/components/ui/toast';
 import {
@@ -23,18 +22,17 @@ import {
   Loader2,
   ChevronRight,
   ArrowLeft,
-  Clock,
-  Zap,
   Bug,
   type LucideIcon,
 } from 'lucide-react';
 import { getIconComponent } from '@hatchway/agent-core/lib/icon-mapper';
+import { getProjectPreviewUrl } from '@/lib/project-preview-url';
 
 interface CommandPaletteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRenameProject?: (project: { id: string; name: string }) => void;
-  onDeleteProject?: (project: { id: string; name: string; slug: string }) => void;
+  onDeleteProject?: (project: { id: string; name: string; slug: string; path?: string | null }) => void;
 }
 
 type CommandAction =
@@ -54,27 +52,25 @@ interface CommandItem {
 export function CommandPalette({ open, onOpenChange, onRenameProject, onDeleteProject }: CommandPaletteProps) {
   const router = useRouter();
   const { projects, refetch } = useProjects();
-  const { selectedRunnerId } = useRunner();
   // SDK mode removed - now controlled via environment variables
   const { addToast } = useToast();
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
-  const [recentCommands, setRecentCommands] = useState<string[]>([]);
-
-  // Load recent commands from localStorage on mount
-  useEffect(() => {
+  const [recentCommands, setRecentCommands] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
     const stored = localStorage.getItem('recentCommands');
-    if (stored) {
-      try {
-        setRecentCommands(JSON.parse(stored));
-      } catch (e) {
-        console.error('Failed to parse recent commands:', e);
-      }
+    if (!stored) return [];
+
+    try {
+      const parsed: unknown = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
+    } catch (error) {
+      console.error('Failed to parse recent commands:', error);
+      return [];
     }
-  }, []);
+  });
 
   // Save recent command to localStorage
   const trackRecentCommand = (commandId: string) => {
@@ -85,15 +81,15 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
     });
   };
 
-  // Reset all state when closing
-  useEffect(() => {
-    if (!open) {
+  const handlePaletteOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
       setBulkMode(false);
       setSelectedItems(new Set());
       setLoadingAction(null);
       setSelectedProject(null);
     }
-  }, [open]);
+    onOpenChange(nextOpen);
+  }, [onOpenChange]);
 
   // Handle escape key for navigation
   useEffect(() => {
@@ -125,6 +121,7 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
 
       const isRunning = project.devServerStatus === 'running';
       const isBuilding = project.status === 'in_progress';
+      const previewUrl = getProjectPreviewUrl(project);
 
       // View/Navigate to project
       items.push({
@@ -137,7 +134,7 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
           fn: () => {
             router.push(`/?project=${project.slug}`);
             trackRecentCommand('view-project');
-            onOpenChange(false);
+            handlePaletteOpenChange(false);
           },
         },
         group: 'Navigate',
@@ -154,26 +151,31 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
             type: 'action',
             fn: async () => {
               setLoadingAction('stop-server');
-              await fetch(`/api/projects/${project.id}/stop`, { method: 'POST' });
-              await refetch();
-              setLoadingAction(null);
-              addToast('success', `Server stopped for "${project.name}"`);
-              onOpenChange(false);
+              try {
+                const response = await fetch(`/api/projects/${project.id}/stop`, { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to stop server');
+                await refetch();
+                addToast('success', `Server stopped for "${project.name}"`);
+                handlePaletteOpenChange(false);
+              } catch (error) {
+                addToast('error', error instanceof Error ? error.message : 'Failed to stop server');
+              } finally {
+                setLoadingAction(null);
+              }
             },
           },
           group: 'Server',
         });
 
-        items.push({
+        if (previewUrl) items.push({
           id: 'open-browser',
           label: 'Open in Browser',
-          description: `localhost:${project.devServerPort || project.port}`,
+          description: previewUrl,
           icon: ExternalLink,
           action: {
             type: 'action',
             fn: () => {
-              const port = project.devServerPort || project.port || 3000;
-              window.open(`http://localhost:${port}`, '_blank');
+              window.open(previewUrl, '_blank', 'noopener,noreferrer');
             },
           },
           group: 'Server',
@@ -188,11 +190,17 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
             type: 'action',
             fn: async () => {
               setLoadingAction('start-server');
-              await fetch(`/api/projects/${project.id}/start`, { method: 'POST' });
-              await refetch();
-              setLoadingAction(null);
-              addToast('success', `Server starting for "${project.name}"`);
-              onOpenChange(false);
+              try {
+                const response = await fetch(`/api/projects/${project.id}/start`, { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to start server');
+                await refetch();
+                addToast('success', `Server starting for "${project.name}"`);
+                handlePaletteOpenChange(false);
+              } catch (error) {
+                addToast('error', error instanceof Error ? error.message : 'Failed to start server');
+              } finally {
+                setLoadingAction(null);
+              }
             },
           },
           group: 'Server',
@@ -210,7 +218,7 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
             type: 'action',
             fn: () => {
               onRenameProject({ id: project.id, name: project.name });
-              onOpenChange(false);
+              handlePaletteOpenChange(false);
             },
           },
           group: 'Manage',
@@ -226,8 +234,8 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
           action: {
             type: 'action',
             fn: () => {
-              onDeleteProject({ id: project.id, name: project.name, slug: project.slug });
-              onOpenChange(false);
+              onDeleteProject({ id: project.id, name: project.name, slug: project.slug, path: project.path });
+              handlePaletteOpenChange(false);
             },
           },
           group: 'Manage',
@@ -254,11 +262,11 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
               } else {
                 addToast('error', data.error || 'Failed to reset project state');
               }
-            } catch (err) {
+            } catch {
               addToast('error', 'Failed to reset project state');
             }
             setLoadingAction(null);
-            onOpenChange(false);
+            handlePaletteOpenChange(false);
           },
         },
         group: 'Debug',
@@ -354,7 +362,7 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
     });
 
     return items;
-  }, [projects, selectedRunnerId, onRenameProject, onDeleteProject, onOpenChange, refetch, router, bulkMode, selectedItems, loadingAction, selectedProject, addToast]);
+  }, [projects, onRenameProject, onDeleteProject, handlePaletteOpenChange, refetch, router, bulkMode, selectedItems, loadingAction, selectedProject, addToast]);
 
   // Filter recent commands that still exist
   const recentCommandItems = useMemo(() => {
@@ -391,34 +399,48 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
   const handleBulkStopServers = async () => {
     const count = selectedItems.size;
     setLoadingAction('bulk-stop-servers');
-    await Promise.all(
-      Array.from(selectedItems).map((id) =>
-        fetch(`/api/projects/${id}/stop`, { method: 'POST' })
-      )
-    );
-    await refetch();
-    setLoadingAction(null);
-    setSelectedItems(new Set());
-    setBulkMode(false);
-    addToast('success', `Stopped ${count} server${count > 1 ? 's' : ''}`);
-    onOpenChange(false);
+    try {
+      const responses = await Promise.all(
+        Array.from(selectedItems).map((id) =>
+          fetch(`/api/projects/${id}/stop`, { method: 'POST' })
+        )
+      );
+      if (responses.some((response) => !response.ok)) throw new Error('Failed to stop one or more servers');
+      await refetch();
+      setSelectedItems(new Set());
+      setBulkMode(false);
+      addToast('success', `Stopped ${count} server${count > 1 ? 's' : ''}`);
+      handlePaletteOpenChange(false);
+    } catch (error) {
+      addToast('error', error instanceof Error ? error.message : 'Failed to stop servers');
+    } finally {
+      setLoadingAction(null);
+    }
   };
 
   const handleBulkDelete = async () => {
     const count = selectedItems.size;
     if (confirm(`Are you sure you want to delete ${count} project(s)?`)) {
       setLoadingAction('bulk-delete');
-      await Promise.all(
-        Array.from(selectedItems).map((id) =>
-          fetch(`/api/projects/${id}`, { method: 'DELETE' })
-        )
-      );
-      await refetch();
-      setLoadingAction(null);
-      setSelectedItems(new Set());
-      setBulkMode(false);
-      addToast('success', `Deleted ${count} project${count > 1 ? 's' : ''}`);
-      onOpenChange(false);
+      try {
+        const responses = await Promise.all(
+          Array.from(selectedItems).map((id) =>
+            fetch(`/api/projects/${id}`, { method: 'DELETE' })
+          )
+        );
+        if (responses.some((response) => !response.ok)) {
+          throw new Error('Failed to delete one or more projects');
+        }
+        await refetch();
+        setSelectedItems(new Set());
+        setBulkMode(false);
+        addToast('success', `Deleted ${count} project${count > 1 ? 's' : ''}`);
+        handlePaletteOpenChange(false);
+      } catch (error) {
+        addToast('error', error instanceof Error ? error.message : 'Failed to delete projects');
+      } finally {
+        setLoadingAction(null);
+      }
     }
   };
 
@@ -459,7 +481,7 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
     switch (action.type) {
       case 'navigate':
         router.push(action.path);
-        onOpenChange(false);
+        handlePaletteOpenChange(false);
         break;
       case 'action':
         action.fn();
@@ -481,7 +503,7 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
   return (
     <Command.Dialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={handlePaletteOpenChange}
       label="Command Menu"
       className="fixed left-[50%] top-[50%] z-50 w-full max-w-[640px] translate-x-[-50%] translate-y-[-50%]"
     >
@@ -595,7 +617,7 @@ export function CommandPalette({ open, onOpenChange, onRenameProject, onDeletePr
                   <Command.Item
                     key={command.id}
                     value={command.label}
-                    onSelect={(value, metadata) => {
+                    onSelect={() => {
                       // Handle keyboard Enter - no modifier keys possible
                       handleSelect(command);
                     }}

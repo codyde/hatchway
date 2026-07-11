@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { signIn } from '@/lib/auth-client';
 import { Loader2 } from 'lucide-react';
+import Link from 'next/link';
 
 /**
  * Inner component that uses useSearchParams - must be wrapped in Suspense
@@ -46,12 +47,12 @@ function GitHubConnectContent() {
             Failed to Connect GitHub
           </h1>
           <p className="text-zinc-400 mb-6">{error}</p>
-          <a
+          <Link
             href="/"
             className="inline-block px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
           >
             Go Back
-          </a>
+          </Link>
         </div>
       </div>
     );

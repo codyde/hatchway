@@ -24,6 +24,7 @@ import {
 import { getFrameworkLogo } from "@/lib/framework-logos"
 import { useTheme } from "@/contexts/ThemeContext"
 import Image from "next/image"
+import { getProjectPreviewUrl } from "@/lib/project-preview-url"
 
 interface ProjectCardProps {
   project: Project
@@ -81,8 +82,8 @@ export function ProjectCard({
   const handleOpenBrowser = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    const port = project.devServerPort || project.port || 3000
-    window.open(`http://localhost:${port}`, '_blank')
+    const previewUrl = getProjectPreviewUrl(project)
+    if (previewUrl) window.open(previewUrl, '_blank', 'noopener,noreferrer')
   }
 
   const handleAction = (e: React.MouseEvent, action: () => void) => {
@@ -235,6 +236,7 @@ export function ProjectCard({
           <>
             <button
               onClick={handleOpenBrowser}
+              disabled={!getProjectPreviewUrl(project)}
               className="p-1.5 hover:bg-accent rounded transition-colors"
               title="Open in browser"
             >

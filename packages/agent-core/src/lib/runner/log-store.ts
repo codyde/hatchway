@@ -10,8 +10,24 @@ export interface LogEntry {
   timestamp: Date;
 }
 
-const logBuffers = new Map<string, LogEntry[]>();
-const listeners = new Map<string, Set<(event: LogStreamEvent) => void>>();
+interface RunnerLogStore {
+  logBuffers: Map<string, LogEntry[]>;
+  listeners: Map<string, Set<(event: LogStreamEvent) => void>>;
+}
+
+declare global {
+  var __runnerLogStore: RunnerLogStore | undefined;
+}
+
+// Next.js can bundle the runner-events and project-logs routes separately. A
+// process-global store keeps both routes attached to the same buffers.
+const store = globalThis.__runnerLogStore ?? {
+  logBuffers: new Map<string, LogEntry[]>(),
+  listeners: new Map<string, Set<(event: LogStreamEvent) => void>>(),
+};
+globalThis.__runnerLogStore = store;
+
+const { logBuffers, listeners } = store;
 
 function getBuffer(projectId: string) {
   if (!logBuffers.has(projectId)) {
@@ -58,6 +74,12 @@ export function subscribeToRunnerLogs(
     set.add(listener);
   } else {
     listeners.set(projectId, new Set([listener]));
+  }
+
+  // Register first, then replay synchronously so a log cannot arrive between
+  // taking the snapshot and attaching the live listener.
+  for (const entry of getRunnerLogs(projectId)) {
+    listener({ type: 'log', entry });
   }
 
   return () => {

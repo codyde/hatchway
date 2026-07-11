@@ -34,9 +34,11 @@ async function saveMessage(message: SaveMessageParams): Promise<void> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      id: message.id,
       role: message.type,
       content: message.content,
       parts: message.parts,
+      timestamp: message.timestamp,
     }),
   });
 

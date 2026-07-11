@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useId, useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { TextMessage } from '@/types/generation';
@@ -16,6 +16,7 @@ interface AgentNotesSectionProps {
  */
 export function AgentNotesSection({ textByTodo, defaultExpanded = false }: AgentNotesSectionProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const panelId = useId();
 
   // Flatten all notes, filter short ones, and dedupe consecutive similar notes
   const filteredNotes = useMemo(() => {
@@ -44,7 +45,10 @@ export function AgentNotesSection({ textByTodo, defaultExpanded = false }: Agent
   return (
     <div className="space-y-2">
       <button
-        onClick={() => setIsExpanded(!isExpanded)}
+        type="button"
+        aria-expanded={isExpanded}
+        aria-controls={panelId}
+        onClick={() => setIsExpanded(expanded => !expanded)}
         className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-gray-500 hover:text-gray-400 transition-colors"
       >
         <MessageSquare className="w-3 h-3" />
@@ -59,6 +63,7 @@ export function AgentNotesSection({ textByTodo, defaultExpanded = false }: Agent
       <AnimatePresence>
         {isExpanded && (
           <motion.div
+            id={panelId}
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}

@@ -38,7 +38,10 @@ export async function GET() {
       hasCompletedOnboarding: user[0].hasCompletedOnboarding,
     });
   } catch (error) {
-    return handleAuthError(error);
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+    console.error("Failed to get onboarding status:", error);
+    return NextResponse.json({ error: "Failed to get onboarding status" }, { status: 500 });
   }
 }
 
@@ -66,7 +69,10 @@ export async function POST() {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return handleAuthError(error);
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+    console.error("Failed to update onboarding status:", error);
+    return NextResponse.json({ error: "Failed to update onboarding status" }, { status: 500 });
   }
 }
 
@@ -94,6 +100,9 @@ export async function DELETE() {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return handleAuthError(error);
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+    console.error("Failed to reset onboarding status:", error);
+    return NextResponse.json({ error: "Failed to reset onboarding status" }, { status: 500 });
   }
 }

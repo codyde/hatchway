@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { ChevronRight, ChevronLeft, Cpu, Layout, Zap, Palette, Sparkles, Paintbrush, Sliders } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
-import { Button } from '@/components/ui/button';
 import { TAG_DEFINITIONS, TagDefinition, TagOption } from '@hatchway/agent-core/config/tags';
 import { ColorPickerTag } from './ColorPickerTag';
 import { BrandThemePreview } from './BrandThemePreview';
@@ -12,6 +11,7 @@ import { FrameworkPreview } from './FrameworkPreview';
 import { useAuth } from '@/contexts/AuthContext';
 import { SDK_ENABLED } from '@/contexts/SDKModeContext';
 import type { SDKMode } from '@/contexts/SDKModeContext';
+import Image from 'next/image';
 
 interface TagDropdownProps {
   open: boolean;
@@ -248,9 +248,12 @@ export function TagDropdown({
               >
                 <div className="flex items-center gap-3">
                   {option.logo && (
-                    <img
+                    <Image
                       src={option.logo}
                       alt={`${option.label} logo`}
+                      width={20}
+                      height={20}
+                      unoptimized
                       className="w-5 h-5 object-contain shrink-0"
                     />
                   )}
@@ -278,6 +281,7 @@ export function TagDropdown({
                   >
                     <BrandThemePreview 
                       brand={{
+                        value: option.value,
                         label: option.label,
                         values: option.values as {
                           primaryColor: string;

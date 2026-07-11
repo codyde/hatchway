@@ -65,6 +65,14 @@ import { useBuildWebSocket } from "@/hooks/useBuildWebSocket";
 import { WebSocketStatus } from "@/components/WebSocketStatus";
 import { useProjectStatusSSE } from "@/hooks/useProjectStatusSSE";
 import { useAuthGate } from "@/components/auth/AuthGate";
+import { createSSEPayloadParser } from "@/lib/sse-parser";
+import { mapBuildsToRequestMessages } from "@/lib/build-message-mapping";
+import {
+  clearPendingAuthDraft,
+  createPendingAuthDraft,
+  loadPendingAuthDraft,
+  savePendingAuthDraft,
+} from "@/lib/pending-auth-draft";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { OnboardingModal, LocalModeOnboarding } from "@/components/onboarding";
@@ -173,6 +181,8 @@ function normalizeHydratedState(state: unknown): GenerationState {
   const result: GenerationState = {
     id: (stateObj.id as string) ?? '',
     projectId: (stateObj.projectId as string) ?? '',
+    requestMessageId: stateObj.requestMessageId as string | null | undefined,
+    sessionStatus: stateObj.sessionStatus as GenerationState['sessionStatus'],
     projectName: (stateObj.projectName as string) ?? '',
     operationType: (stateObj.operationType as GenerationState['operationType']) ?? 'continuation',
     agentId: stateObj.agentId as GenerationState['agentId'],
@@ -214,6 +224,9 @@ function HomeContent() {
   
   const [input, setInput] = useState("");
   const [imageAttachments, setImageAttachments] = useState<MessagePart[]>([]);
+  const [hasRecoveredDraft, setHasRecoveredDraft] = useState(false);
+  const recoveryAttemptedRef = useRef(false);
+  const recoveredDraftProjectSlugRef = useRef<string | null>(null);
   const queryClient = useQueryClient();
 
   // Message mutation hook for saving
@@ -235,7 +248,7 @@ function HomeContent() {
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [showHeaderLoginModal, setShowHeaderLoginModal] = useState(false);
   const [renamingProject, setRenamingProject] = useState<{ id: string; name: string } | null>(null);
-  const [deletingProject, setDeletingProject] = useState<{ id: string; name: string; slug: string } | null>(null);
+  const [deletingProject, setDeletingProject] = useState<{ id: string; name: string; slug: string; path?: string | null } | null>(null);
   const [appliedTags, setAppliedTags] = useState<AppliedTag[]>([]);
   const [generationState, setGenerationState] =
     useState<GenerationState | null>(null);
@@ -505,20 +518,23 @@ function HomeContent() {
 
   const sessionStates = useMemo(() => {
     const sessions = messagesFromDB?.sessions ?? [];
-    return sessions
-      .map((session) =>
-        session.hydratedState ? normalizeHydratedState(session.hydratedState) : null
-      )
-      .filter((state): state is GenerationState => !!state);
+    return sessions.reduce<GenerationState[]>((states, session) => {
+      if (session.hydratedState) {
+        const hydratedState = normalizeHydratedState(session.hydratedState);
+        states.push({
+          ...hydratedState,
+          requestMessageId: session.requestMessageId ?? hydratedState.requestMessageId ?? null,
+          sessionStatus: session.status ?? hydratedState.sessionStatus,
+        });
+      }
+      return states;
+    }, []);
   }, [messagesFromDB]);
 
   const serverBuilds = useMemo(() => {
-    // Include builds that have todos OR have a summary (element edits may complete without todos)
-    const builds = sessionStates.filter(
-      (state) => !state.isActive && ((state.todos && state.todos.length > 0) || state.buildSummary)
-    );
-
-    return builds;
+    // Keep empty legacy sessions in the mapping pool so they still reserve
+    // their request slot instead of shifting every later positional fallback.
+    return sessionStates.filter((state) => !state.isActive);
   }, [sessionStates]);
 
   // Build history: Completed builds from server + current completed build (if not already in server data)
@@ -552,6 +568,20 @@ function HomeContent() {
     }
     return buildHistory.length > 0 ? buildHistory[0] : null;
   }, [generationState, buildHistory]);
+
+  const displayedUserMessages = useMemo(() => {
+    const userMessages = conversationMessages.filter(
+      (message) => classifyMessage(message) === 'user'
+    );
+    return userMessages.length > 0
+      ? userMessages
+      : (displayedInitialMessage ? [displayedInitialMessage] : []);
+  }, [conversationMessages, classifyMessage, displayedInitialMessage]);
+
+  const buildMessageMapping = useMemo(
+    () => mapBuildsToRequestMessages(displayedUserMessages, buildHistory),
+    [displayedUserMessages, buildHistory]
+  );
 
   // Force refetch when build completes to ensure fresh data from database
   // This eliminates duplicate "Build complete!" messages
@@ -616,8 +646,6 @@ function HomeContent() {
   // Track if component has mounted to avoid hydration errors
   const [isMounted, setIsMounted] = useState(false);
 
-  // Don't read sessionStorage during SSR - prevents hydration mismatch
-  const [activeView, setActiveView] = useState<"chat" | "build">("chat");
   const hasStartedGenerationRef = useRef<Set<string>>(new Set());
   const isGeneratingRef = useRef(false); // Sync flag for immediate checks
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -626,8 +654,14 @@ function HomeContent() {
   const router = useRouter();
   const selectedProjectSlug = searchParams?.get("project") ?? null;
   const { projects, refetch, runnerOnline, setActiveProjectId } = useProjects();
-  const { selectedRunnerId, availableRunners } = useRunner();
-  const { selectedAgentId, selectedClaudeModelId, claudeModels } = useAgent();
+  const { selectedRunnerId, setSelectedRunnerId, availableRunners } = useRunner();
+  const {
+    selectedAgentId,
+    setSelectedAgentId,
+    selectedClaudeModelId,
+    setSelectedClaudeModelId,
+    claudeModels,
+  } = useAgent();
   const { executionMode, setExecutionMode } = useExecutionMode();
 
   // Seed the execution-mode selector from the opened project's saved mode (per-project persistence)
@@ -656,17 +690,72 @@ function HomeContent() {
   );
   const selectedClaudeModelLabel = selectedClaudeModel?.label ?? "Claude Sonnet 4.6";
 
-  // Restore view preference from sessionStorage after mount (avoids hydration error)
-  useEffect(() => {
-    setIsMounted(true);
-    const stored = sessionStorage.getItem("preferredView") as
-      | "chat"
-      | "build"
-      | null;
-    if (stored) {
-      setActiveView(stored);
+  const clearDraftRecovery = useCallback(async () => {
+    setHasRecoveredDraft(false);
+    try {
+      await clearPendingAuthDraft();
+    } catch (error) {
+      console.warn("Failed to clear pending authentication draft:", error);
     }
   }, []);
+
+  // Defer the workspace until after mount to avoid hydration differences.
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted || isAuthLoading || !isAuthenticated || recoveryAttemptedRef.current) {
+      return;
+    }
+    recoveryAttemptedRef.current = true;
+
+    void loadPendingAuthDraft()
+      .then((draft) => {
+        if (!draft) return;
+
+        setInput(draft.text);
+        setImageAttachments(draft.images);
+        setAppliedTags(draft.buildConfig.appliedTags.map((tag) => ({
+          ...tag,
+          appliedAt: new Date(tag.appliedAt),
+        })));
+        if (draft.buildConfig.selectedAgentId === 'claude-code' || draft.buildConfig.selectedAgentId === 'openai-codex') {
+          setSelectedAgentId(draft.buildConfig.selectedAgentId);
+        }
+        if (claudeModels.some((model) => model.id === draft.buildConfig.selectedClaudeModelId)) {
+          setSelectedClaudeModelId(draft.buildConfig.selectedClaudeModelId as typeof selectedClaudeModelId);
+        }
+        setSelectedRunnerId(draft.buildConfig.selectedRunnerId);
+        setExecutionMode(draft.buildConfig.executionMode);
+        recoveredDraftProjectSlugRef.current = draft.project?.slug ?? null;
+        if (draft.project?.slug && selectedProjectSlug !== draft.project.slug) {
+          router.replace(`/?project=${encodeURIComponent(draft.project.slug)}`, { scroll: false });
+        }
+        setHasRecoveredDraft(true);
+        addToast(
+          "success",
+          "Your draft was restored after sign-in. Review it and submit when ready; no build was started.",
+        );
+      })
+      .catch((error) => {
+        console.error("Failed to recover authentication draft:", error);
+        addToast("error", "Your saved draft could not be restored from this browser.");
+      });
+  }, [
+    addToast,
+    claudeModels,
+    isAuthLoading,
+    isAuthenticated,
+    isMounted,
+    router,
+    selectedClaudeModelId,
+    selectedProjectSlug,
+    setExecutionMode,
+    setSelectedAgentId,
+    setSelectedClaudeModelId,
+    setSelectedRunnerId,
+  ]);
 
   // Onboarding modal trigger logic
   // Show onboarding for:
@@ -709,6 +798,10 @@ function HomeContent() {
   // Load tags from existing project or initialize defaults for new project
   useEffect(() => {
     if (currentProject?.tags) {
+      if (recoveredDraftProjectSlugRef.current === currentProject.slug) {
+        recoveredDraftProjectSlugRef.current = null;
+        return;
+      }
       // Load tags from existing project
       const loadedTags = deserializeTags(currentProject.tags as never);
       setAppliedTags(loadedTags);
@@ -987,28 +1080,6 @@ function HomeContent() {
     return scrollHeight - scrollTop - clientHeight < threshold;
   }, []);
 
-  // Handle tab switching
-  const switchTab = useCallback((tab: "chat" | "build") => {
-    setActiveView(tab);
-    sessionStorage.setItem("preferredView", tab);
-  }, []);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "1") {
-        e.preventDefault();
-        switchTab("chat");
-      } else if ((e.metaKey || e.ctrlKey) && e.key === "2") {
-        e.preventDefault();
-        switchTab("build");
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [switchTab]);
-
   // Listen for selection change requests from SelectionMode
   useEffect(() => {
     const handleSelectionChange = (e: CustomEvent) => {
@@ -1019,9 +1090,6 @@ function HomeContent() {
         if (DEBUG_PAGE) console.warn("⚠️ No current project for element change");
         return;
       }
-
-      // Switch to Build tab to show build progress
-      switchTab("build");
 
       // Build enhanced prompt with element context using code formatting for selectors/classes
       const elementContext = element ? `
@@ -1051,51 +1119,6 @@ function HomeContent() {
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProject]);
-
-  // Auto-switch to Build when todos first populate
-  const previousTodoCountRef = useRef(0);
-  const codexAutoSwitchRef = useRef(false);
-  useEffect(() => {
-    codexAutoSwitchRef.current = false;
-  }, [generationState?.id]);
-  useEffect(() => {
-    const currentTodoCount = generationState?.todos?.length || 0;
-
-    if (DEBUG_PAGE) console.log("👀 Todo count tracker:", {
-      current: currentTodoCount,
-      previous: previousTodoCountRef.current,
-      activeView,
-      shouldSwitch: currentTodoCount > 0 && previousTodoCountRef.current === 0,
-    });
-
-    // If we just got our first todo, switch to build tab (regardless of current tab)
-    if (currentTodoCount > 0 && previousTodoCountRef.current === 0) {
-      if (DEBUG_PAGE) console.log("📊 First todos arrived! Switching to Build tab");
-      switchTab("build");
-    }
-
-    previousTodoCountRef.current = currentTodoCount;
-  }, [generationState?.todos?.length, activeView, switchTab]);
-
-  useEffect(() => {
-    const isCodex =
-      (generationState?.agentId ?? selectedAgentId) === "openai-codex";
-    if (!isCodex) {
-      codexAutoSwitchRef.current = false;
-      return;
-    }
-    if (!generationState?.codex?.lastUpdatedAt) return;
-    if (codexAutoSwitchRef.current) return;
-    if (DEBUG_PAGE) console.log("🌀 Codex activity detected, switching to Build tab");
-    switchTab("build");
-    codexAutoSwitchRef.current = true;
-  }, [
-    generationState?.codex?.lastUpdatedAt,
-    generationState?.agentId,
-    selectedAgentId,
-    switchTab,
-  ]);
-
 
   // Only auto-scroll if user is near bottom or if loading (new message streaming)
   useEffect(() => {
@@ -1249,7 +1272,11 @@ function HomeContent() {
       generationState?.projectId === currentProject?.id
     ) {
       console.log("🔄 [Fallback] Project transitioned to completed but generationState still active, clearing...");
-      setGenerationState((prev) => prev ? { ...prev, isActive: false } : null);
+      setGenerationState((prev) => prev ? {
+        ...prev,
+        isActive: false,
+        sessionStatus: 'completed',
+      } : null);
     }
 
     prevProjectStatusRef.current = currentStatus || null;
@@ -1272,6 +1299,7 @@ function HomeContent() {
       isElementChange?: boolean;
       isRetry?: boolean;
       messageParts?: MessagePart[];
+      requestMessageId?: string;
     } = {}
   ) => {
     const {
@@ -1279,7 +1307,19 @@ function HomeContent() {
       isElementChange = false,
       isRetry = false,
       messageParts,
+      requestMessageId: suppliedRequestMessageId,
     } = options;
+
+    const project = projects.find((candidate) => candidate.id === projectId);
+    if (!project) {
+      console.error("❌ Project not found for ID:", projectId);
+      addToast("error", "Project could not be loaded. Refresh and try again.");
+      return false;
+    }
+
+    const requestMessageId = addUserMessage
+      ? suppliedRequestMessageId ?? crypto.randomUUID()
+      : suppliedRequestMessageId;
 
     // Lock FIRST
     isGeneratingRef.current = true;
@@ -1288,7 +1328,7 @@ function HomeContent() {
     // Only add user message to UI if this is a continuation (not auto-start)
     if (addUserMessage) {
       const userMessage: Message = {
-        id: crypto.randomUUID(), // Use UUID to match database
+        id: requestMessageId!,
         projectId: projectId,
         type: "user",
         role: "user",
@@ -1303,6 +1343,7 @@ function HomeContent() {
         (old: unknown) => {
           const data = old as { messages: Message[]; sessions: unknown[] } | undefined;
           if (!data) return { messages: [userMessage], sessions: [] };
+          if (data.messages.some((message) => message.id === userMessage.id)) return data;
           return {
             ...data,
             messages: [...data.messages, userMessage],
@@ -1310,39 +1351,36 @@ function HomeContent() {
         }
       );
 
-      // Save to database so it's included in conversation history
-      // PERF: Fire-and-forget - don't block UI on DB write
-      // The optimistic cache update above already shows the message immediately
-      saveMessageMutation.mutate(
-        {
-          id: crypto.randomUUID(),
+      // Persist before dispatching so the session FK can safely reference this ID.
+      try {
+        await saveMessageMutation.mutateAsync({
+          id: requestMessageId!,
           projectId: projectId,
           type: 'user',
-          content: prompt, // Always save text content as string
-          parts: messageParts && messageParts.length > 0 ? messageParts : undefined, // Save parts separately if they exist
+          content: prompt,
+          parts: messageParts && messageParts.length > 0 ? messageParts : undefined,
           timestamp: Date.now(),
-        },
-        {
-          onSuccess: () => {
-            if (DEBUG_PAGE) console.log("💾 User message saved to database");
-          },
-          onError: (error) => {
-            console.error("Failed to save user message:", error);
-            // Notify user - message is in UI but may not persist after refresh
-            addToast("warning", "Your message is visible but may not persist after refresh.");
-            // Continue anyway - message is in local state and build still happens
-          },
-        }
-      );
-    }
-
-    // Find project and detect operation type
-    const project = projects.find((p) => p.id === projectId);
-    if (!project) {
-      console.error("❌ Project not found for ID:", projectId);
-      setIsGenerating(false);
-      isGeneratingRef.current = false;
-      return;
+        });
+      } catch (error) {
+        console.error("Failed to save user message:", error);
+        queryClient.setQueryData(
+          ['projects', projectId, 'messages'],
+          (old: unknown) => {
+            const data = old as { messages: Message[]; sessions: unknown[] } | undefined;
+            if (!data) return old;
+            return {
+              ...data,
+              messages: data.messages.filter((message) => message.id !== requestMessageId),
+            };
+          }
+        );
+        setInput(prompt);
+        setImageAttachments(messageParts?.filter((part) => part.type === 'image') ?? []);
+        addToast("error", "Your request could not be saved, so the build was not started. Try again.");
+        setIsGenerating(false);
+        isGeneratingRef.current = false;
+        return false;
+      }
     }
 
     // Initialize template info from existing project if available
@@ -1404,13 +1442,17 @@ function HomeContent() {
     }
 
     // Create FRESH generation state for this build with tag-derived values
-    const freshState = createFreshGenerationState({
+    const freshState = {
+      ...createFreshGenerationState({
       projectId: project.id,
       projectName: project.name,
       operationType,
       agentId: effectiveAgent,
       claudeModelId: effectiveClaudeModel,
-    });
+      }),
+      requestMessageId: requestMessageId ?? null,
+      sessionStatus: 'active' as const,
+    };
 
     console.log('🎬 [Follow-up Debug] Creating fresh state for build:', {
       buildId: freshState.id,
@@ -1447,9 +1489,13 @@ function HomeContent() {
       prompt,
       operationType,
       isElementChange,
-      undefined, // messageParts
-      freshState.id // Pass buildId directly
+      messageParts,
+      freshState.id,
+      undefined,
+      requestMessageId,
+      project.runnerId ?? undefined
     );
+    return true;
   };
 
   const startGenerationStream = async (
@@ -1467,7 +1513,9 @@ function HomeContent() {
       runCommand: string;
       repository: string;
       branch: string;
-    }
+    },
+    requestMessageId?: string,
+    assignedRunnerId?: string
   ) => {
     // CRITICAL: Use the buildId passed from startGeneration() or fall back to ref
     // This ensures client and server use the SAME build ID for proper deduplication
@@ -1488,9 +1536,10 @@ function HomeContent() {
         effectiveClaudeModel = parsed.claudeModel;
       }
 
-      // Derive runner from tags if present, otherwise use context
+      // Initial projects use the runner selected once from @runner. Existing
+      // projects always stay on their persisted workspace owner.
       const runnerTag = appliedTags.find(t => t.key === 'runner');
-      const effectiveRunnerId = runnerTag?.value || selectedRunnerId;
+      const effectiveRunnerId = assignedRunnerId || currentProject?.runnerId || runnerTag?.value || selectedRunnerId;
 
       const res = await fetch(`/api/projects/${projectId}/build`, {
         method: "POST",
@@ -1499,6 +1548,7 @@ function HomeContent() {
           operationType,
           prompt,
           messageParts,
+          requestMessageId,
           buildId: existingBuildId,
           runnerId: effectiveRunnerId,
           executionMode, // 'local' (default) or 'sandbox' (provisions a Railway sandbox runner)
@@ -1517,7 +1567,8 @@ function HomeContent() {
       });
 
       if (!res.ok) {
-        throw new Error("Generation failed");
+        const errorData = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(errorData?.error || `Generation failed (${res.status})`);
       }
 
       const reader = res.body?.getReader();
@@ -1531,8 +1582,9 @@ function HomeContent() {
         timestamp: Date.now(),
       };
       const textBlocksMap = new Map<string, { type: string; text: string }>(); // Track text blocks by ID
-      let pendingDataLines: string[] = [];
+      const sseParser = createSSEPayloadParser();
       let streamCompleted = false;
+      let streamError: Error | null = null;
 
       // Tool messages are handled entirely by the backend (persistent-event-processor)
       // They're saved to the messages table and associated with todos in the database
@@ -1556,7 +1608,10 @@ function HomeContent() {
           const eventTimestamp = new Date().toISOString();
           if (DEBUG_PAGE) console.log(`\n🌊 [${eventTimestamp}] SSE Event: ${data.type}`, data.toolName ? `(${data.toolName})` : "");
 
-          if (data.type === "start") {
+          if (data.type === "error") {
+            streamError = new Error(data.error || "The runner reported a build failure");
+            return;
+          } else if (data.type === "start") {
             // Track assistant message locally for UI updates
             // Backend will save to DB (hybrid approach for reliability)
             currentMessage = {
@@ -1969,34 +2024,8 @@ function HomeContent() {
       };
 
       const pushChunk = (chunk: string) => {
-        if (!chunk) return;
-
-        const normalized = chunk.replace(/\r\n/g, "\n");
-        const lines = normalized.split("\n");
-
-        for (const rawLine of lines) {
-          const line = rawLine.replace(/\r$/, "");
-          const trimmed = line.trim();
-
-          if (trimmed.length === 0) {
-            if (pendingDataLines.length > 0) {
-              const payload = pendingDataLines.join("\n");
-              pendingDataLines = [];
-              processEventPayload(payload);
-            }
-            continue;
-          }
-
-          if (trimmed.startsWith(":")) {
-            continue;
-          }
-
-          const match = trimmed.match(/^data:\s?(.*)$/);
-          if (match) {
-            pendingDataLines.push(match[1] ?? "");
-          } else {
-            pendingDataLines.push(trimmed);
-          }
+        for (const payload of sseParser.push(chunk)) {
+          processEventPayload(payload);
         }
       };
 
@@ -2010,6 +2039,7 @@ function HomeContent() {
             if (DEBUG_PAGE) console.log("🧩 Chunk contains TodoWrite payload");
           }
           pushChunk(chunk);
+          if (streamError) throw streamError;
         }
 
         if (done) {
@@ -2018,11 +2048,10 @@ function HomeContent() {
             pushChunk(finalChunk);
           }
 
-          if (pendingDataLines.length > 0) {
-            const payload = pendingDataLines.join("\n");
-            pendingDataLines = [];
+          for (const payload of sseParser.finish()) {
             processEventPayload(payload);
           }
+          if (streamError) throw streamError;
 
           break;
         }
@@ -2090,6 +2119,7 @@ function HomeContent() {
         const completed = {
           ...prev,
           isActive: false,
+          sessionStatus: 'completed' as const,
           endTime: new Date(),
         };
 
@@ -2116,19 +2146,22 @@ function HomeContent() {
       setTimeout(() => refetch(), 1000);
     } catch (error) {
       console.error("Generation error:", error);
-      // Mark generation as failed and SAVE
+      const errorMessage = error instanceof Error ? error.message : "Unknown build error";
+      freshBuildIdRef.current = null;
+
+      // Do not turn a failed local stream into an inactive state, which is rendered
+      // as a completed build. The server remains the source of truth for history.
       updateGenerationState((prev) => {
-        if (!prev) return null;
-        const failed = {
-          ...prev,
-          isActive: false,
-          endTime: new Date(),
-        };
-
-        // Note: No saveGenerationState() - persistent processor already finalized session
-
-        return failed;
+        if (!prev || prev.id !== existingBuildId) return prev;
+        return null;
       });
+      setCurrentProject((prev) => prev ? {
+        ...prev,
+        status: "failed",
+        errorMessage,
+      } : prev);
+      addToast("error", `Build failed: ${errorMessage}. Check the runner and retry.`);
+      setTimeout(() => refetch(), 1000);
     } finally {
       setIsGenerating(false);
       isGeneratingRef.current = false; // Unlock
@@ -2141,18 +2174,74 @@ function HomeContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Allow submission if there's either text input or image attachments
-    if ((!input.trim() && imageAttachments.length === 0) || isLoading) return;
+    if (isLoading) return;
+    if (!input.trim()) {
+      if (imageAttachments.length > 0) {
+        addToast("warning", "Add a text prompt describing what to do with the attached image.");
+      }
+      return;
+    }
+    if (selectedProjectSlug && !currentProject) {
+      addToast("warning", "The project is still loading. Wait a moment, then submit your restored draft.");
+      return;
+    }
 
-    // Wrap the actual submission in requireAuth
-    // This will show login modal if not authenticated (in hosted mode)
-    requireAuth(() => performSubmit());
+    const pendingDraft = createPendingAuthDraft({
+      text: input.trim(),
+      images: imageAttachments
+        .filter((part): part is MessagePart & { type: 'image'; image: string } => part.type === 'image' && !!part.image)
+        .map((part) => ({
+          type: 'image',
+          image: part.image,
+          mimeType: part.mimeType,
+          fileName: part.fileName,
+        })),
+      project: currentProject ? { id: currentProject.id, slug: currentProject.slug } : null,
+      buildConfig: {
+        appliedTags: appliedTags.map((tag) => ({
+          key: tag.key,
+          value: tag.value,
+          expandedValues: tag.expandedValues,
+          appliedAt: tag.appliedAt.toISOString(),
+        })),
+        selectedAgentId,
+        selectedClaudeModelId,
+        selectedRunnerId,
+        executionMode,
+      },
+    });
+
+    if (!isAuthenticated) {
+      try {
+        await savePendingAuthDraft(pendingDraft);
+      } catch (error) {
+        console.error("Failed to prepare authentication draft recovery:", error);
+        addToast(
+          "warning",
+          "Draft recovery is unavailable. Email sign-in will still work; GitHub sign-in will retry before redirecting.",
+        );
+      }
+    }
+
+    const continuingAfterInPlaceAuth = !isAuthenticated;
+    requireAuth(
+      () => {
+        if (continuingAfterInPlaceAuth) recoveryAttemptedRef.current = true;
+        void performSubmit();
+      },
+      { beforeOAuth: () => savePendingAuthDraft(pendingDraft) },
+    );
   };
   
   // The actual submission logic, called after auth is confirmed
   const performSubmit = async () => {
-    const userPrompt = input;
+    const userPrompt = input.trim();
     const userImages = imageAttachments;
+    const requestMessageId = crypto.randomUUID();
+    const messageParts: MessagePart[] = [
+      ...userImages,
+      { type: 'text', text: userPrompt },
+    ];
     setInput("");
     setImageAttachments([]);
 
@@ -2160,6 +2249,7 @@ function HomeContent() {
     if (!currentProject) {
       setIsCreatingProject(true);
       setTemplateProvisioningInfo(null); // Clear previous template info
+      let projectCreated = false;
 
       try {
         // Derive agent/model from tags
@@ -2173,6 +2263,9 @@ function HomeContent() {
           effectiveClaudeModel = parsed.claudeModel;
         }
 
+        const runnerTag = appliedTags.find((tag) => tag.key === 'runner');
+        const effectiveRunnerId = runnerTag?.value || selectedRunnerId;
+
         // Step 1: Analyze project with AI to get friendly name, icon, template
         if (DEBUG_PAGE) console.log("🔍 Analyzing project...");
         const analyzeRes = await fetch("/api/projects/analyze", {
@@ -2183,7 +2276,7 @@ function HomeContent() {
             agent: effectiveAgent,
             claudeModel: effectiveClaudeModel,
             tags: serializeTags(appliedTags),
-            runnerId: selectedRunnerId,
+            runnerId: effectiveRunnerId,
           }),
         });
 
@@ -2205,18 +2298,26 @@ function HomeContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt: userPrompt,
+            messageId: requestMessageId,
+            messageParts,
             analysis,
             agent: effectiveAgent,
-            runnerId: selectedRunnerId,
+            runnerId: effectiveRunnerId,
             claudeModel: effectiveClaudeModel,
             tags: serializeTags(appliedTags),
           }),
         });
 
-        if (!res.ok) throw new Error("Failed to create project");
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => null) as { error?: string; details?: string } | null;
+          throw new Error(errorData?.details || errorData?.error || "Failed to create project");
+        }
 
         const data = await res.json();
         const project = data.project;
+        const persistedRequestMessageId = data.requestMessageId || requestMessageId;
+        projectCreated = true;
+        await clearDraftRecovery();
 
         if (DEBUG_PAGE) console.log("✅ Project created:", project.slug);
 
@@ -2236,13 +2337,17 @@ function HomeContent() {
           selectedClaudeModelId,
           tags: appliedTags,
         });
-        const freshState = createFreshGenerationState({
-          projectId: project.id,
-          projectName: project.name,
-          operationType: "initial-build",
-          agentId: effectiveAgent,
-          claudeModelId: effectiveAgent === "claude-code" ? effectiveClaudeModel : undefined,
-        });
+        const freshState = {
+          ...createFreshGenerationState({
+            projectId: project.id,
+            projectName: project.name,
+            operationType: "initial-build",
+            agentId: effectiveAgent,
+            claudeModelId: effectiveAgent === "claude-code" ? effectiveClaudeModel : undefined,
+          }),
+          requestMessageId: persistedRequestMessageId,
+          sessionStatus: 'active' as const,
+        };
 
         if (DEBUG_PAGE) console.log("✅ Fresh state created:", {
           id: freshState.id,
@@ -2263,10 +2368,6 @@ function HomeContent() {
         updateGenerationState(freshState);
         if (DEBUG_PAGE) console.log("✅ GenerationState set in React");
 
-        // Switch to Build tab
-        if (DEBUG_PAGE) console.log("🎯 Switching to Build tab for new project");
-        switchTab("build");
-
         // Set project state
         setCurrentProject(project);
         setIsCreatingProject(false);
@@ -2280,24 +2381,8 @@ function HomeContent() {
         router.replace(`/?project=${project.slug}`, { scroll: false });
         if (DEBUG_PAGE) console.log("🔄 URL updated");
 
-        // Add user message (with image support)
-        const messageParts: MessagePart[] = [];
-
-        // Add images first (Claude best practice)
-        if (userImages.length > 0) {
-          messageParts.push(...userImages);
-        }
-
-        // Add text content
-        if (userPrompt.trim()) {
-          messageParts.push({
-            type: 'text',
-            text: userPrompt.trim(),
-          });
-        }
-
         const userMessage: Message = {
-          id: crypto.randomUUID(), // Use UUID to match database
+          id: persistedRequestMessageId,
           projectId: project.id,
           type: "user",
           role: "user",
@@ -2312,6 +2397,7 @@ function HomeContent() {
           (old: unknown) => {
             const data = old as { messages: Message[]; sessions: unknown[] } | undefined;
             if (!data) return { messages: [userMessage], sessions: [] };
+            if (data.messages.some((message) => message.id === userMessage.id)) return data;
             return {
               ...data,
               messages: [...data.messages, userMessage],
@@ -2328,37 +2414,36 @@ function HomeContent() {
           false,
           messageParts.length > 0 ? messageParts : undefined,
           freshState.id, // Pass buildId for initial builds too
-          analysis.template // Pass template from runner analysis
+          analysis.template, // Pass template from runner analysis
+          persistedRequestMessageId,
+          effectiveRunnerId
         );
 
         // Refresh project list to pick up final state
         refetch();
       } catch (error) {
         console.error("Error creating project:", error);
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        if (!projectCreated) {
+          setInput(userPrompt);
+          setImageAttachments(userImages);
+        }
+        addToast(
+          "error",
+          projectCreated
+            ? `Project was created, but setup did not finish: ${errorMessage}`
+            : `Project creation failed: ${errorMessage}. Your draft was restored.`
+        );
         setIsCreatingProject(false);
       }
     } else {
       // Continue conversation on existing project
-      // Build message parts array
-      const messageParts: MessagePart[] = [];
-
-      // Add images first (Claude best practice)
-      if (userImages.length > 0) {
-        messageParts.push(...userImages);
-      }
-
-      // Add text content
-      if (userPrompt.trim()) {
-        messageParts.push({
-          type: 'text',
-          text: userPrompt.trim(),
-        });
-      }
-
-      await startGeneration(currentProject.id, userPrompt, {
+      const generationStarted = await startGeneration(currentProject.id, userPrompt, {
         addUserMessage: true,
         messageParts: messageParts.length > 0 ? messageParts : undefined,
+        requestMessageId,
       });
+      if (generationStarted) await clearDraftRecovery();
     }
   };
 
@@ -2381,19 +2466,19 @@ function HomeContent() {
 
         // Check size limit (5MB for Claude API)
         if (file.size > 5 * 1024 * 1024) {
-          console.error('Image too large. Maximum size is 5MB.');
+          addToast('error', 'Image too large. Maximum size is 5MB.');
           continue;
         }
 
         // Check max images (20 per Claude API)
         if (imageAttachments.length >= 20) {
-          console.error('Maximum 20 images per message.');
+          addToast('error', 'Maximum 20 images per message.');
           continue;
         }
 
         // Verify supported format
         if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
-          console.error('Unsupported format. Use JPEG, PNG, GIF, or WebP.');
+          addToast('error', 'Unsupported format. Use JPEG, PNG, GIF, or WebP.');
           continue;
         }
 
@@ -2411,11 +2496,12 @@ function HomeContent() {
             }]);
           };
           reader.onerror = () => {
-            console.error('Failed to process image. Please try again.');
+            addToast('error', 'Failed to process image. Please try again.');
           };
           reader.readAsDataURL(file);
         } catch (error) {
           console.error('Failed to process image:', error);
+          addToast('error', 'Failed to process image. Please try again.');
         }
       }
     }
@@ -2429,7 +2515,7 @@ function HomeContent() {
       const res = await fetch(`/api/projects/${currentProject.id}/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runnerId: selectedRunnerId }),
+        body: JSON.stringify({ runnerId: currentProject.runnerId || selectedRunnerId }),
       });
       if (res.ok) {
         if (DEBUG_PAGE) console.log("✅ Dev server started successfully!");
@@ -2507,9 +2593,13 @@ function HomeContent() {
             clearInterval(pollInterval);
           }
         }, 1000); // Poll every second
+      } else {
+        const data = await res.json().catch(() => null) as { error?: string; details?: string } | null;
+        throw new Error(data?.details || data?.error || `Failed to start server (${res.status})`);
       }
     } catch (error) {
       console.error("Failed to start dev server:", error);
+      addToast('error', error instanceof Error ? error.message : 'Failed to start dev server');
     } finally {
       // Clear loading state after a delay
       setTimeout(() => setIsStartingServer(false), 2000);
@@ -2524,7 +2614,7 @@ function HomeContent() {
       const res = await fetch(`/api/projects/${currentProject.id}/stop`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runnerId: selectedRunnerId }),
+        body: JSON.stringify({ runnerId: currentProject.runnerId || selectedRunnerId }),
       });
       if (res.ok) {
         // Update currentProject directly
@@ -2541,9 +2631,13 @@ function HomeContent() {
 
         // Refresh project list so UI reflects stopped status
         refetch();
+      } else {
+        const data = await res.json().catch(() => null) as { error?: string; details?: string } | null;
+        throw new Error(data?.details || data?.error || `Failed to stop server (${res.status})`);
       }
     } catch (error) {
       console.error("Failed to stop dev server:", error);
+      addToast('error', error instanceof Error ? error.message : 'Failed to stop dev server');
     } finally {
       setTimeout(() => setIsStoppingServer(false), 1000);
     }
@@ -2622,6 +2716,7 @@ function HomeContent() {
             projectId={deletingProject.id}
             projectName={deletingProject.name}
             projectSlug={deletingProject.slug}
+            projectPath={deletingProject.path}
             onDeleteComplete={(message: string) => {
               setDeletingProject(null);
               refetch();
@@ -2653,7 +2748,7 @@ function HomeContent() {
             }}
           />
         )}
-        <SidebarInset className="bg-theme-content pt-2">
+        <SidebarInset className="bg-theme-content pt-2 min-h-screen flex flex-col">
         {/* Top Header Bar - Breadcrumb and Auth */}
         <header className="flex h-10 shrink-0 items-center justify-between px-4">
           <div className="flex items-center gap-2">
@@ -2694,11 +2789,26 @@ function HomeContent() {
             )}
           </div>
         </header>
+
+        {hasRecoveredDraft && (
+          <div className="border-y border-sky-400/30 bg-sky-400/10 px-4 py-2 text-sm text-sky-100" role="status">
+            Draft restored after sign-in. Review the prompt, images, and build settings, then submit when ready. Nothing has started automatically.
+          </div>
+        )}
         
         {runnerOnline === false && (
-          <div className="bg-amber-500/20 border border-amber-400/40 text-amber-200 px-4 py-2 text-sm">
-            Local runner is offline. Start the runner CLI on your machine to
-            enable builds and previews.
+          <div className="bg-amber-500/20 border border-amber-400/40 text-amber-200 px-4 py-2 text-sm flex flex-wrap items-center justify-between gap-2">
+            <span>
+              Local runner is offline. Start the runner CLI on your machine to
+              enable builds and previews.
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowOnboarding(true)}
+              className="shrink-0 rounded border border-amber-300/50 px-3 py-1 font-medium hover:bg-amber-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200"
+            >
+              Open setup guide
+            </button>
           </div>
         )}
         
@@ -2707,8 +2817,8 @@ function HomeContent() {
             runnerConnected flag, recent build-WS activity (runnerActive), and
             the 10s-polled runner presence list (projectRunnerLive). */}
         {currentProject && currentProject.runnerId && !currentProject.runnerConnected && !runnerActive && !projectRunnerLive && (
-          <div className="bg-orange-500/20 border border-orange-400/40 text-orange-200 px-4 py-2 text-sm flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="bg-orange-500/20 border border-orange-400/40 text-orange-200 px-4 py-2 text-sm flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="m19 5 3-3"/>
                 <path d="m2 22 3-3"/>
@@ -2722,9 +2832,16 @@ function HomeContent() {
                 Restart the runner CLI to continue working on this project.
               </span>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowOnboarding(true)}
+              className="shrink-0 rounded border border-orange-300/50 px-3 py-1 font-medium hover:bg-orange-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-200"
+            >
+              Open setup guide
+            </button>
           </div>
         )}
-        <div className="h-[calc(100vh-3.5rem)] bg-theme-content text-foreground flex flex-col overflow-hidden">
+        <div className="flex-1 min-h-0 bg-theme-content text-foreground flex flex-col overflow-y-auto lg:overflow-hidden">
           {/* Landing Page */}
           <AnimatePresence mode="wait">
             {conversationMessages.length === 0 &&
@@ -2800,8 +2917,18 @@ function HomeContent() {
                           ))}
                         </div>
                       )}
-                      <div className="relative input-theme border rounded-lg shadow-2xl overflow-hidden hover:border-[var(--theme-input-border-focus)] transition-all duration-300">
+                      {imageAttachments.length > 0 && !input.trim() && (
+                        <p className="mb-2 text-sm text-amber-300" role="status">
+                          Add a text prompt describing what to do with the image.
+                        </p>
+                      )}
+                      <div className="relative input-theme border rounded-lg shadow-2xl overflow-hidden hover:border-[var(--theme-input-border-focus)] focus-within:border-[var(--theme-input-border-focus)] focus-within:ring-2 focus-within:ring-[var(--theme-primary)]/50 transition-all duration-300">
+                        <label htmlFor="new-project-prompt" className="sr-only">
+                          Describe the project you want to build
+                        </label>
                         <textarea
+                          id="new-project-prompt"
+                          aria-label="Describe the project you want to build"
                           value={input}
                           onChange={(e) => setInput(e.target.value)}
                           onKeyDown={handleKeyDown}
@@ -2814,10 +2941,12 @@ function HomeContent() {
                         />
                         <button
                           type="submit"
-                          disabled={isLoading || (!input.trim() && imageAttachments.length === 0)}
-                          className="absolute right-4 bottom-4 p-3 text-white hover:text-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed transition-all duration-200"
+                          aria-label="Create project"
+                          disabled={isLoading || !input.trim()}
+                          className="absolute right-4 bottom-4 p-3 text-white hover:text-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded transition-all duration-200"
                         >
                           <svg
+                            aria-hidden="true"
                             className="w-8 h-8"
                             fill="none"
                             stroke="currentColor"
@@ -2865,7 +2994,7 @@ function HomeContent() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.3 }}
-                  className="flex-1 flex flex-col lg:flex-row gap-4 p-2 min-h-0 overflow-hidden"
+                  className="flex-1 flex flex-col lg:flex-row gap-4 p-2 min-h-0 overflow-y-auto lg:overflow-hidden"
                 >
                   {/* Left Panel - Chat (resizable on desktop, full width on mobile) */}
                   <ResizablePanel
@@ -2873,7 +3002,7 @@ function HomeContent() {
                     minWidth={280}
                     maxWidth={600}
                     onResize={setChatPanelWidth}
-                    className="flex flex-col min-h-0 h-[50vh] lg:h-full max-h-full w-full lg:w-auto"
+                    className="flex flex-col min-h-[32rem] h-[60vh] lg:min-h-0 lg:h-full max-h-none lg:max-h-full w-full lg:w-auto shrink-0"
                   >
                     <motion.div
                       initial={{ opacity: 0, x: -50 }}
@@ -2974,24 +3103,25 @@ function HomeContent() {
                       >
                         <div className="space-y-4 p-4">
                             {(() => {
-                              const userMessages = conversationMessages.filter(
-                                (msg) => classifyMessage(msg) === 'user'
-                              );
-                              const allUserMessages = userMessages.length > 0 
-                                ? userMessages 
-                                : (displayedInitialMessage ? [displayedInitialMessage] : []);
-                              
-                              if (allUserMessages.length === 0) return null;
+                              const activeBuildIsAuxiliary = !!generationState?.isActive && (
+                                generationState.isAutoFix ||
+                                generationState.operationType === 'autofix' ||
+                                generationState.operationType === 'continuation'
+                              ) && !generationState.requestMessageId;
 
-                              // Get the sorted build history (oldest first for display)
-                              const sortedBuildHistory = [...buildHistory].reverse();
-                              
                               return (
                                 <div className="space-y-6 px-1">
-                                  {allUserMessages.map((msg, idx) => {
-                                    const correspondingBuild = sortedBuildHistory[idx];
-                                    const isLastMessage = idx === allUserMessages.length - 1;
-                                    const hasActiveBuild = isLastMessage && generationState?.isActive;
+                                  {displayedUserMessages.map((msg, idx) => {
+                                    const correspondingBuild = buildMessageMapping.buildByMessageId.get(msg.id);
+                                    const isLastMessage = idx === displayedUserMessages.length - 1;
+                                    const hasActiveBuild = !!generationState?.isActive && (
+                                      generationState.requestMessageId
+                                        ? generationState.requestMessageId === msg.id
+                                        : isLastMessage && !activeBuildIsAuxiliary
+                                    );
+                                    const messageImages = msg.parts?.filter(
+                                      (part) => part.type === 'image' && part.image
+                                    ) ?? [];
 
                                     return (
                                       <div key={msg.id || idx} className="space-y-3">
@@ -3007,10 +3137,21 @@ function HomeContent() {
                                               {getMessageContent(msg)}
                                             </ReactMarkdown>
                                           </div>
+                                          {messageImages.length > 0 && (
+                                            <div className="flex flex-wrap gap-2 pt-2">
+                                              {messageImages.map((part, imageIndex) => (
+                                                <ImageAttachment
+                                                  key={`${msg.id}-image-${imageIndex}`}
+                                                  fileName={part.fileName || 'image.png'}
+                                                  imageSrc={part.image || ''}
+                                                />
+                                              ))}
+                                            </div>
+                                          )}
                                         </div>
 
                                         {/* Planning Phase - only show for current active build */}
-                                        {isLastMessage && isThinking && currentProject && !generationState?.buildPlan && (
+                                        {hasActiveBuild && isThinking && currentProject && !generationState?.buildPlan && (
                                           <div className="space-y-3">
                                             <PlanningPhase
                                               activePlanningTool={generationState?.activePlanningTool}
@@ -3038,7 +3179,7 @@ function HomeContent() {
                                         )}
 
                                         {/* Build Plan from active generation - Show after planning completes */}
-                                        {isLastMessage && generationState?.buildPlan && (
+                                        {hasActiveBuild && generationState?.buildPlan && (
                                           <div className="space-y-2">
                                             <p className="text-xs uppercase tracking-[0.3em] text-gray-500">
                                               Build plan
@@ -3123,6 +3264,15 @@ function HomeContent() {
                                         {/* Completed Build - Show build plan, agent notes, todos, and summary */}
                                         {correspondingBuild && !correspondingBuild.isActive && !correspondingBuild.isAutoFix && (
                                           <>
+                                            {(correspondingBuild.sessionStatus === 'failed' || correspondingBuild.sessionStatus === 'cancelled') && (
+                                              <div className={`rounded-lg border px-3 py-2 text-sm ${
+                                                correspondingBuild.sessionStatus === 'cancelled'
+                                                  ? 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+                                                  : 'border-red-400/30 bg-red-400/10 text-red-200'
+                                              }`}>
+                                                Build {correspondingBuild.sessionStatus}. Review the summary or retry the request.
+                                              </div>
+                                            )}
                                             {/* Build Plan - from persisted generation state */}
                                             {correspondingBuild.buildPlan && (
                                               <div className="space-y-2">
@@ -3178,28 +3328,108 @@ function HomeContent() {
                                           />
                                         )}
 
-                                        {/* Active Auto-Fix - Show when current generation state is an auto-fix */}
-                                        {hasActiveBuild && generationState?.isAutoFix && (
-                                          <ErrorDetectedSection
-                                            errorMessage={generationState.autoFixError}
-                                            todos={generationState.todos || []}
-                                            buildSummary={generationState.buildSummary}
-                                            isActive={true}
-                                          />
-                                        )}
-
-                                        {/* Auto-Fix Starting - Show when autofix-started event received but session not yet created */}
-                                        {autoFixState && !generationState?.isAutoFix && (
-                                          <ErrorDetectedSection
-                                            errorMessage={autoFixState.errorMessage}
-                                            todos={[]}
-                                            buildSummary={undefined}
-                                            isActive={true}
-                                          />
-                                        )}
                                       </div>
                                     );
                                   })}
+
+                                  {buildMessageMapping.unlinkedBuilds.map((build) => (
+                                    <div key={`unlinked-${build.id}`} className="space-y-3 border-t border-white/10 pt-6">
+                                      <p className="text-xs uppercase tracking-[0.3em] text-gray-500">
+                                        {build.isAutoFix || build.operationType === 'autofix'
+                                          ? 'Automatic repair'
+                                          : build.operationType === 'continuation'
+                                          ? 'Retry attempt'
+                                          : 'Legacy build'}
+                                      </p>
+                                      {build.isAutoFix || build.operationType === 'autofix' ? (
+                                        <ErrorDetectedSection
+                                          errorMessage={build.autoFixError}
+                                          todos={build.todos || []}
+                                          buildSummary={build.buildSummary}
+                                          isActive={false}
+                                        />
+                                      ) : (
+                                        <>
+                                          <p className={`text-sm ${
+                                            build.sessionStatus === 'failed'
+                                              ? 'text-red-300'
+                                              : build.sessionStatus === 'cancelled'
+                                              ? 'text-amber-300'
+                                              : 'text-gray-400'
+                                          }`}>
+                                            Build {build.sessionStatus || 'completed'}
+                                          </p>
+                                          {build.todos?.length > 0 && (
+                                            <CompletedTodosSummary todos={build.todos} />
+                                          )}
+                                          {build.buildSummary && (
+                                            <div className="prose prose-invert max-w-none text-sm text-gray-300">
+                                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                {build.buildSummary}
+                                              </ReactMarkdown>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  ))}
+
+                                  {activeBuildIsAuxiliary && generationState && (
+                                    <div className="space-y-3 border-t border-white/10 pt-6">
+                                      {generationState.isAutoFix || generationState.operationType === 'autofix' ? (
+                                        <ErrorDetectedSection
+                                          errorMessage={generationState.autoFixError}
+                                          todos={generationState.todos || []}
+                                          buildSummary={generationState.buildSummary}
+                                          isActive={true}
+                                        />
+                                      ) : (
+                                        <>
+                                          <p className="text-xs uppercase tracking-[0.3em] text-gray-500">
+                                            Retry in progress
+                                          </p>
+                                          {generationState.todos?.length > 0 ? (
+                                            <TodoList
+                                              todos={generationState.todos}
+                                              toolsByTodo={generationState.toolsByTodo}
+                                              activeTodoIndex={generationState.activeTodoIndex}
+                                              allTodosCompleted={generationState.todos.every((todo) => todo.status === 'completed')}
+                                              onViewFiles={() => window.dispatchEvent(new CustomEvent("switch-to-editor"))}
+                                              onStartServer={startDevServer}
+                                            />
+                                          ) : currentProject ? (
+                                            <PlanningPhase
+                                              activePlanningTool={generationState.activePlanningTool}
+                                              projectName={currentProject.name}
+                                            />
+                                          ) : null}
+                                          <button
+                                            onClick={cancelBuild}
+                                            disabled={isCancelling}
+                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-red-400 transition-colors rounded-lg border border-white/10 hover:border-red-500/30 hover:bg-red-500/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          >
+                                            {isCancelling ? (
+                                              <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                              <Square className="w-4 h-4" />
+                                            )}
+                                            <span>{isCancelling ? 'Cancelling...' : 'Stop Build'}</span>
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {autoFixState && !generationState?.isAutoFix && (
+                                    <div className="border-t border-white/10 pt-6">
+                                      <ErrorDetectedSection
+                                        errorMessage={autoFixState.errorMessage}
+                                        todos={[]}
+                                        buildSummary={undefined}
+                                        isActive={true}
+                                      />
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })()}
@@ -3239,8 +3469,18 @@ function HomeContent() {
                               ))}
                             </div>
                           )}
-                          <div className="relative input-theme border rounded-lg overflow-hidden hover:border-[var(--theme-input-border-focus)] transition-all duration-300">
+                          {imageAttachments.length > 0 && !input.trim() && (
+                            <p className="mb-2 text-xs text-amber-300" role="status">
+                              Add a text prompt describing what to do with the image.
+                            </p>
+                          )}
+                          <div className="relative input-theme border rounded-lg overflow-hidden hover:border-[var(--theme-input-border-focus)] focus-within:border-[var(--theme-input-border-focus)] focus-within:ring-2 focus-within:ring-[var(--theme-primary)]/50 transition-all duration-300">
+                            <label htmlFor="follow-up-prompt" className="sr-only">
+                              Continue the project conversation
+                            </label>
                             <textarea
+                              id="follow-up-prompt"
+                              aria-label="Continue the project conversation"
                               value={input}
                               onChange={(e) => setInput(e.target.value)}
                               onKeyDown={handleKeyDown}
@@ -3252,10 +3492,12 @@ function HomeContent() {
                             />
                             <button
                               type="submit"
-                              disabled={isLoading || (!input.trim() && imageAttachments.length === 0)}
-                              className="absolute right-3 bottom-3 p-2 text-white hover:text-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed transition-all duration-200"
+                              aria-label="Send follow-up"
+                              disabled={isLoading || !input.trim()}
+                              className="absolute right-3 bottom-3 p-2 text-white hover:text-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded transition-all duration-200"
                             >
                               <svg
+                                aria-hidden="true"
                                 className="w-6 h-6"
                                 fill="none"
                                 stroke="currentColor"
@@ -3276,7 +3518,7 @@ function HomeContent() {
                   </ResizablePanel>
 
                   {/* Right Panel - Tabbed Preview (fills remaining space) */}
-                  <div className="flex-1 flex flex-col min-w-0 h-auto lg:h-full">
+                  <div className="flex-1 flex flex-col min-w-0 min-h-[32rem] h-[70vh] lg:min-h-0 lg:h-full shrink-0 lg:shrink">
                     {/* Tabbed Preview Panel - Full height */}
                     <div className="flex-1 min-h-0 h-[70vh] lg:h-full">
                       <TabbedPreview

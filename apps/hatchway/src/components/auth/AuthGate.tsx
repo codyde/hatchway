@@ -21,6 +21,10 @@ interface AuthGateProps {
   showChildren?: boolean;
 }
 
+interface RequireAuthOptions {
+  beforeOAuth?: () => void | Promise<void>;
+}
+
 /**
  * AuthGate - Wraps content that requires authentication
  * 
@@ -110,13 +114,15 @@ export function useAuthGate() {
   const { isAuthenticated, isLocalMode } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const [beforeOAuth, setBeforeOAuth] = useState<(() => void | Promise<void>) | null>(null);
 
   const requireAuth = useCallback(
-    (action: () => void) => {
+    (action: () => void, options: RequireAuthOptions = {}) => {
       if (isLocalMode || isAuthenticated) {
         action();
       } else {
         setPendingAction(() => action);
+        setBeforeOAuth(() => options.beforeOAuth ?? null);
         setShowLoginModal(true);
       }
     },
@@ -127,6 +133,7 @@ export function useAuthGate() {
     if (pendingAction) {
       pendingAction();
       setPendingAction(null);
+      setBeforeOAuth(null);
     }
   }, [pendingAction]);
 
@@ -135,6 +142,7 @@ export function useAuthGate() {
       open={showLoginModal}
       onOpenChange={setShowLoginModal}
       onSuccess={handleAuthSuccess}
+      onBeforeOAuth={beforeOAuth ?? undefined}
     />
   );
 
