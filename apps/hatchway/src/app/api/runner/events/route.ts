@@ -784,7 +784,31 @@ IMPORTANT:
 
             break;
           }
-          case 'build-failed':
+          case 'build-failed': {
+            const now = new Date();
+            const sessionId = event.sessionId;
+
+            if (sessionId) {
+              await db.update(generationSessions)
+                .set({
+                  status: 'failed',
+                  endedAt: now,
+                  updatedAt: now,
+                })
+                .where(eq(generationSessions.id, sessionId));
+            }
+
+            const [updated] = await db.update(projects)
+              .set({
+                status: 'failed',
+                errorMessage: event.error,
+                lastActivityAt: now,
+              })
+              .where(eq(projects.id, projectId))
+              .returning();
+            if (updated) emitProjectUpdateFromData(projectId, updated);
+            break;
+          }
           case 'build-stream':
             break;
           case 'error': {

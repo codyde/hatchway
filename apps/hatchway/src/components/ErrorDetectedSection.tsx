@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Wrench } from 'lucide-react';
 import type { TodoItem } from '@/types/generation';
@@ -27,6 +27,7 @@ export function ErrorDetectedSection({
   defaultExpanded = true,
 }: ErrorDetectedSectionProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const panelId = useId();
   const completedCount = todos.filter(t => t.status === 'completed').length;
   const totalCount = todos.length;
 
@@ -66,7 +67,10 @@ export function ErrorDetectedSection({
         <div>
           {/* Expandable header */}
           <button
-            onClick={() => setIsExpanded(!isExpanded)}
+            type="button"
+            aria-expanded={isExpanded}
+            aria-controls={panelId}
+            onClick={() => setIsExpanded(expanded => !expanded)}
             className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
           >
             <div className="flex items-center gap-1.5">
@@ -93,6 +97,7 @@ export function ErrorDetectedSection({
           <AnimatePresence>
             {isExpanded && (
               <motion.div
+                id={panelId}
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}

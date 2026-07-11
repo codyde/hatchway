@@ -201,6 +201,7 @@ export const runningProcesses = pgTable('running_processes', {
 export const generationSessions = pgTable('generation_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  requestMessageId: uuid('request_message_id').references(() => messages.id, { onDelete: 'set null' }),
   buildId: text('build_id').notNull(),
   operationType: text('operation_type'),
   status: text('status').notNull().default('active'),
@@ -214,6 +215,7 @@ export const generationSessions = pgTable('generation_sessions', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => ({
   projectIdIdx: index('generation_sessions_project_id_idx').on(table.projectId),
+  requestMessageIdIdx: index('generation_sessions_request_message_id_idx').on(table.requestMessageId),
   buildIdUnique: uniqueIndex('generation_sessions_build_id_unique').on(table.buildId),
 }));
 

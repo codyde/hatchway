@@ -43,7 +43,7 @@ function getAuthSecret(): string {
 
 // Lazy-initialized auth instance
 // This prevents errors during Next.js build/page collection phases
-let _auth: ReturnType<typeof betterAuth> | null = null;
+let _auth: ReturnType<typeof createAuth> | null = null;
 
 // Get the base URL for OAuth redirects
 function getBaseURL(): string {

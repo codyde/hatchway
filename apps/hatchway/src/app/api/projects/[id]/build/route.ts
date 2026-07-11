@@ -5,13 +5,12 @@ import { addRunnerEventSubscriber } from '@hatchway/agent-core/lib/runner/event-
 import { registerBuild, cleanupStuckBuilds } from '@hatchway/agent-core/lib/runner/persistent-event-processor';
 import type { RunnerEvent } from '@hatchway/agent-core/shared/runner/messages';
 import { db } from '@hatchway/agent-core/lib/db/client';
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import {
   projects,
   messages,
   generationSessions,
 } from '@hatchway/agent-core/lib/db/schema';
-import { eq } from 'drizzle-orm';
 import { DEFAULT_AGENT_ID, DEFAULT_CLAUDE_MODEL_ID } from '@hatchway/agent-core/types/agent';
 import type { ClaudeModelId } from '@hatchway/agent-core/types/agent';
 import { parseModelTag } from '@hatchway/agent-core/lib/tags/model-parser';
@@ -58,6 +57,26 @@ export async function POST(
       });
     }
 
+    let requestMessageId: string | null = null;
+    if (body.requestMessageId) {
+      const linkedMessages = await db
+        .select({ id: messages.id })
+        .from(messages)
+        .where(and(
+          eq(messages.id, body.requestMessageId),
+          eq(messages.projectId, id)
+        ))
+        .limit(1);
+
+      if (linkedMessages.length === 0) {
+        return new Response(JSON.stringify({ error: 'Request message was not found for this project' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      requestMessageId = body.requestMessageId;
+    }
+
     commandId = randomUUID();
 
     // CLEANUP: Before starting new build, check for and finalize stuck builds
@@ -97,14 +116,16 @@ export async function POST(
           : DEFAULT_CLAUDE_MODEL_ID;
     }
 
-    // PRIORITY 2: Extract runner from tags if present (tags take precedence)
-    let runnerId = body.runnerId || process.env.RUNNER_DEFAULT_ID || 'default';
-    if (body.tags && body.tags.length > 0) {
-      const runnerTag = body.tags.find(t => t.key === 'runner');
-      if (runnerTag) {
-        runnerId = runnerTag.value;
-        console.log('[build-route] ✓ Runner enforced from tags:', runnerId);
-      }
+    // A project stays on the runner that owns its workspace. Tags/body only
+    // select a runner for legacy projects that do not have an assignment yet.
+    const runnerTag = body.tags?.find(t => t.key === 'runner');
+    const requestedRunnerId = runnerTag?.value || body.runnerId || process.env.RUNNER_DEFAULT_ID || 'default';
+    const runnerId = project.runnerId || requestedRunnerId;
+    if (project.runnerId && requestedRunnerId !== project.runnerId) {
+      console.log('[build-route] Ignoring runner override for assigned project:', {
+        assignedRunnerId: project.runnerId,
+        requestedRunnerId,
+      });
     }
 
     // EXECUTION MODE: 'local' (default) and 'sandbox' both build on the
@@ -196,7 +217,7 @@ export async function POST(
     // User message already saved by frontend via TanStack DB
     // Skip duplicate save here (hybrid approach - frontend saves user messages)
 
-    // Update project with runnerId if not already set (for existing projects)
+    // Assign legacy projects once; all subsequent work uses this runner.
     if (!project.runnerId) {
       await db.update(projects)
         .set({ runnerId: runnerId })
@@ -218,6 +239,8 @@ export async function POST(
     const initialRawState = JSON.stringify({
       id: buildId,
       projectId: id,
+      requestMessageId,
+      sessionStatus: 'active',
       projectName: project.name,
       operationType: body.operationType,
       agentId,
@@ -245,6 +268,8 @@ export async function POST(
           // Merge agent info into existing state
           const mergedState = {
             ...existingState,
+            requestMessageId: requestMessageId ?? existingSession[0].requestMessageId,
+            sessionStatus: 'active',
             agentId,
             claudeModelId: agentId === 'claude-code' ? claudeModel : undefined,
             droidModelId: agentId === 'factory-droid' ? droidModel : undefined,
@@ -259,6 +284,7 @@ export async function POST(
       await db.update(generationSessions)
         .set({
           projectId: id,
+          requestMessageId: requestMessageId ?? existingSession[0].requestMessageId,
           operationType: body.operationType ?? existingSession[0].operationType,
           status: 'active',
           startedAt: existingSession[0].startedAt ?? now,
@@ -269,6 +295,7 @@ export async function POST(
     } else {
       const inserted = await db.insert(generationSessions).values({
         projectId: id,
+        requestMessageId,
         buildId,
         operationType: body.operationType,
         status: 'active',

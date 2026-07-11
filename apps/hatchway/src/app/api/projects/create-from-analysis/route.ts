@@ -41,6 +41,8 @@ export async function POST(request: Request) {
     const originalPrompt = body.prompt || body.originalPrompt;
     const tags = body.tags;
     const runnerId = body.runnerId;
+    const messageId = body.messageId as string | undefined;
+    const messageParts = Array.isArray(body.messageParts) ? body.messageParts : undefined;
 
     // Validate required fields
     if (!slug || !friendlyName || !originalPrompt) {
@@ -48,6 +50,10 @@ export async function POST(request: Request) {
         { error: 'slug, friendlyName, and prompt are required' },
         { status: 400 }
       );
+    }
+
+    if (messageId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(messageId)) {
+      return NextResponse.json({ error: 'messageId must be a UUID' }, { status: 400 });
     }
 
     // Validate slug format
@@ -72,19 +78,34 @@ export async function POST(request: Request) {
       console.log(`[create-from-analysis] Slug collision detected, using: ${finalSlug}`);
     }
 
-    // Create the project
-    const [project] = await db.insert(projects).values({
-      name: friendlyName,
-      slug: finalSlug,
-      description: description || originalPrompt.substring(0, 150),
-      icon: icon || 'Code',
-      status: 'pending',
-      originalPrompt,
-      detectedFramework: template?.framework || null,
-      tags: tags || null,
-      userId: userId,
-      runnerId: runnerId || null,
-    }).returning();
+    // Create the project and its initial request atomically so the build can
+    // safely reference the caller-provided message ID immediately.
+    const { project, initialMessage } = await db.transaction(async (tx) => {
+      const [createdProject] = await tx.insert(projects).values({
+        name: friendlyName,
+        slug: finalSlug,
+        description: description || originalPrompt.substring(0, 150),
+        icon: icon || 'Code',
+        status: 'pending',
+        originalPrompt,
+        detectedFramework: template?.framework || null,
+        tags: tags || null,
+        userId: userId,
+        runnerId: runnerId || null,
+      }).returning();
+
+      const initialContent = messageParts && messageParts.length > 0
+        ? JSON.stringify(messageParts)
+        : originalPrompt;
+      const [createdMessage] = await tx.insert(messages).values({
+        ...(messageId ? { id: messageId } : {}),
+        projectId: createdProject.id,
+        role: 'user',
+        content: initialContent,
+      }).returning();
+
+      return { project: createdProject, initialMessage: createdMessage };
+    });
 
     console.log(`[create-from-analysis] Project created: ${project.id}`);
 
@@ -97,23 +118,13 @@ export async function POST(request: Request) {
       : uaLower.includes('safari/') && !uaLower.includes('chrome/') ? 'safari'
       : 'other';
 
-    // Persist initial user prompt as first chat message
-    try {
-      await db.insert(messages).values({
-        projectId: project.id,
-        role: 'user',
-        content: originalPrompt,
-      });
-    } catch (messageError) {
-      console.error(`[create-from-analysis] Failed to persist initial prompt for project ${project.id}:`, messageError);
-    }
-
     // Enrich project with runner connection status before returning
     // This ensures the frontend knows the runner is connected from the start
     const enrichedProject = await enrichProjectWithRunnerStatus(project);
 
     return NextResponse.json({
       project: enrichedProject,
+      requestMessageId: initialMessage.id,
       template,
     });
   } catch (error) {

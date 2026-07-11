@@ -4,6 +4,7 @@ export type {
   ToolCall,
   TextMessage,
   BuildOperationType,
+  GenerationSessionStatus,
   BuildPhase,
   CodexPhaseId,
   CodexPhaseStatus,

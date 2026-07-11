@@ -11,10 +11,6 @@ const nextConfig = {
   // `--webpack` flag on next build/dev/start, because of the webpack() resolve
   // alias config below. Migrating those aliases to `turbopack.resolveAlias`
   // would let this run on Turbopack (the Next 16 default).
-  // Allow deployment even when TypeScript or ESLint report errors
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   outputFileTracingRoot: path.resolve(__dirname, "..", ".."),
   transpilePackages: ['@hatchway/agent-core'],
   // Keep the Railway SDK (and its tsx/esbuild IaC deps) out of the webpack

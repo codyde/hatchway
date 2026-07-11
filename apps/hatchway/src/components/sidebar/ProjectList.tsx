@@ -58,13 +58,14 @@ import { useDeleteProject } from "@/mutations/projects"
 import { useToast } from "@/components/ui/toast"
 import { useTheme } from "@/contexts/ThemeContext"
 import Image from "next/image"
+import { getProjectPreviewUrl } from "@/lib/project-preview-url"
 
 interface ProjectListProps {
   projects: Project[]
   onStartServer: (projectId: string) => void
   onStopServer: (projectId: string) => void
   onRename: (project: { id: string; name: string }) => void
-  onDelete?: (project: { id: string; name: string; slug: string }) => void // Optional - deletion handled internally
+  onDelete?: (project: { id: string; name: string; slug: string; path?: string | null }) => void // Optional - deletion handled internally
   isCollapsed?: boolean
 }
 
@@ -129,8 +130,8 @@ function CollapsedProjectIcon({
   }
 
   const handleOpenBrowser = () => {
-    const port = project.devServerPort || project.port || 3000
-    window.open(`http://localhost:${port}`, '_blank')
+    const previewUrl = getProjectPreviewUrl(project)
+    if (previewUrl) window.open(previewUrl, '_blank', 'noopener,noreferrer')
   }
 
   // Close hover card when context menu opens
@@ -242,6 +243,7 @@ function CollapsedProjectIcon({
           <>
             <ContextMenuItem 
               onClick={handleOpenBrowser}
+              disabled={!getProjectPreviewUrl(project)}
               className="cursor-pointer text-popover-foreground focus:text-popover-foreground focus:bg-accent"
             >
               <ExternalLink className="w-4 h-4 mr-2 text-muted-foreground" />
@@ -389,7 +391,7 @@ export function ProjectList({
 
   // State for delete confirmation dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [projectToDelete, setProjectToDelete] = useState<{ id: string; name: string; slug: string } | null>(null)
+  const [projectToDelete, setProjectToDelete] = useState<{ id: string; name: string; slug: string; path?: string | null } | null>(null)
   const [deleteFiles, setDeleteFiles] = useState(false)
 
   const handleDeleteClick = (project: Project) => {
@@ -502,8 +504,9 @@ export function ProjectList({
             
             {/* Delete files checkbox */}
             <div className="py-2">
-              <label className="flex items-start gap-3 cursor-pointer group">
+              <label htmlFor="delete-files-collapsed" className="flex items-start gap-3 cursor-pointer group">
                 <Checkbox
+                  id="delete-files-collapsed"
                   checked={deleteFiles}
                   onCheckedChange={(checked) => setDeleteFiles(checked === true)}
                   className="mt-0.5 border-zinc-600 data-[state=checked]:bg-red-600 data-[state=checked]:border-red-600"
@@ -514,7 +517,7 @@ export function ProjectList({
                   </span>
                   <p className="text-xs text-zinc-500 mt-0.5">
                     {projectToDelete?.slug && (
-                      <>Files at <code className="text-zinc-600">~/hatchway-projects/{projectToDelete.slug}</code></>
+                      <>Files at <code className="break-all text-zinc-600">{projectToDelete.path || `~/hatchway-workspace/${projectToDelete.slug}`}</code></>
                     )}
                   </p>
                 </div>
@@ -726,8 +729,9 @@ export function ProjectList({
         
         {/* Delete files checkbox */}
         <div className="py-2">
-          <label className="flex items-start gap-3 cursor-pointer group">
+          <label htmlFor="delete-files-expanded" className="flex items-start gap-3 cursor-pointer group">
             <Checkbox
+              id="delete-files-expanded"
               checked={deleteFiles}
               onCheckedChange={(checked) => setDeleteFiles(checked === true)}
               className="mt-0.5 border-zinc-600 data-[state=checked]:bg-red-600 data-[state=checked]:border-red-600"
@@ -738,7 +742,7 @@ export function ProjectList({
               </span>
               <p className="text-xs text-zinc-500 mt-0.5">
                 {projectToDelete?.slug && (
-                  <>Files at <code className="text-zinc-600">~/hatchway-projects/{projectToDelete.slug}</code></>
+                  <>Files at <code className="break-all text-zinc-600">{projectToDelete.path || `~/hatchway-workspace/${projectToDelete.slug}`}</code></>
                 )}
               </p>
             </div>

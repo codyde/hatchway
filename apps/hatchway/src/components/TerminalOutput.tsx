@@ -62,15 +62,17 @@ export default function TerminalOutput({ projectId, onPortDetected }: TerminalOu
   const { projects } = useProjects();
   const [logs, setLogs] = useState<string[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
   const [detectedPort, setDetectedPort] = useState<number | null>(null);
   const detectedPortRef = useRef<number | null>(null);
   const lastNotifiedPortRef = useRef<number | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const projectIdRef = useRef(projectId);
   const pendingLogsRef = useRef<ParsedLogEntry[]>([]);
   const flushScheduledRef = useRef(false);
   const rafIdRef = useRef<number | null>(null);
-  const converter = useRef(new Convert({
+  const [converter] = useState(() => new Convert({
     fg: '#d4d4d4',
     bg: '#181225',
     newline: true,
@@ -81,76 +83,14 @@ export default function TerminalOutput({ projectId, onPortDetected }: TerminalOu
   const currentProject = projects.find(p => p.id === projectId);
   const devServerStatus = currentProject?.devServerStatus;
 
-  // Debug: Log component mount and projectId changes
-  useEffect(() => {
-    if (DEBUG_TERMINAL) console.log('🖥️  TerminalOutput mounted, projectId:', projectId);
-  }, []);
-
-  useEffect(() => {
-    if (DEBUG_TERMINAL) console.log('🔄 TerminalOutput projectId changed:', projectId);
-    if (projectId) {
-      detectedPortRef.current = null;
-      lastNotifiedPortRef.current = null;
-      setDetectedPort(null);
-      startStreaming();
-    } else {
-      stopStreaming();
-      setLogs([]);
-    }
-
-    return () => stopStreaming();
-  }, [projectId]);
-
   const lastStatusRef = useRef<string | null>(null);
-
-  // Reconnect stream across dev server lifecycle states
-  useEffect(() => {
-    if (DEBUG_TERMINAL) console.log('🔄 Dev server status changed:', devServerStatus);
-
-    const prevStatus = lastStatusRef.current;
-
-    if (!projectId) {
-      if (eventSourceRef.current || prevStatus !== null) {
-        stopStreaming();
-        setLogs([]);
-      }
-      lastStatusRef.current = null;
-      return;
-    }
-
-    const currentStatus = devServerStatus || null;
-
-    if (currentStatus === 'starting') {
-      if (prevStatus !== 'starting') {
-        stopStreaming();
-        setLogs([]);
-        if (DEBUG_TERMINAL) console.log('🔌 Dev server starting, attaching terminal stream...');
-        startStreaming();
-      } else if (!eventSourceRef.current) {
-        startStreaming();
-      }
-    } else if (currentStatus === 'running') {
-      if (!eventSourceRef.current) {
-        if (DEBUG_TERMINAL) console.log('🔌 Dev server running, ensuring terminal stream attached');
-        startStreaming();
-      }
-    } else if (currentStatus === 'stopped' || currentStatus === 'failed' || currentStatus === null) {
-      if (eventSourceRef.current || prevStatus !== currentStatus) {
-        if (DEBUG_TERMINAL) console.log('🛑 Dev server stopped/failed (or unknown), closing terminal stream');
-        stopStreaming();
-        setLogs([]);
-      }
-    }
-
-    lastStatusRef.current = currentStatus;
-  }, [devServerStatus, projectId]);
-
   const connectionAttemptRef = useRef(false);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
 
-  const startStreaming = () => {
+  function startStreaming() {
     if (!projectId) return;
+    const streamProjectId = projectId;
 
     // Prevent duplicate connection attempts (atomic check-and-set)
     if (connectionAttemptRef.current || eventSourceRef.current) {
@@ -163,16 +103,22 @@ export default function TerminalOutput({ projectId, onPortDetected }: TerminalOu
     if (DEBUG_TERMINAL) console.log(`📡 Starting terminal stream for project: ${projectId} (attempt ${retryCountRef.current + 1})`);
 
     try {
-      const url = `/api/projects/${projectId}/logs?stream=true`;
+      const url = `/api/projects/${streamProjectId}/logs?stream=true`;
       const eventSource = new EventSource(url);
 
       eventSource.onopen = () => {
+        if (projectIdRef.current !== streamProjectId) {
+          eventSource.close();
+          return;
+        }
         if (DEBUG_TERMINAL) console.log('✅ Terminal stream connected');
         setIsStreaming(true);
+        setStreamError(null);
         retryCountRef.current = 0; // Reset retry counter on successful connection
       };
 
       eventSource.onmessage = (event) => {
+        if (projectIdRef.current !== streamProjectId) return;
         // Ignore keepalive pings
         if (event.data === ':keepalive') return;
 
@@ -198,6 +144,11 @@ export default function TerminalOutput({ projectId, onPortDetected }: TerminalOu
       };
 
       eventSource.onerror = () => {
+        if (projectIdRef.current !== streamProjectId) {
+          eventSource.close();
+          return;
+        }
+        void fetchLogsAsFallback(streamProjectId);
         const readyState = eventSource.readyState;
 
         if (readyState === EventSource.CLOSED) {
@@ -217,9 +168,9 @@ export default function TerminalOutput({ projectId, onPortDetected }: TerminalOu
       connectionAttemptRef.current = false;
       scheduleRetry();
     }
-  };
+  }
 
-  const scheduleRetry = () => {
+  function scheduleRetry() {
     // Clear any pending retry
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
@@ -244,9 +195,9 @@ export default function TerminalOutput({ projectId, onPortDetected }: TerminalOu
         startStreaming();
       }
     }, delay);
-  };
+  }
 
-  const stopStreaming = (resetPort: boolean = true) => {
+  function stopStreaming(resetPort: boolean = true) {
     // Clear any pending retry
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
@@ -278,23 +229,32 @@ export default function TerminalOutput({ projectId, onPortDetected }: TerminalOu
     }
 
     setIsStreaming(false);
-  };
+  }
 
-  const fetchLogsAsFallback = async () => {
-    if (!projectId) return;
+  async function fetchLogsAsFallback(targetProjectId = projectId) {
+    if (!targetProjectId) return;
 
     if (DEBUG_TERMINAL) console.log('🔄 Using fallback: fetching logs via JSON API');
     try {
-      const res = await fetch(`/api/projects/${projectId}/logs`);
-      const data = await res.json();
+      const res = await fetch(`/api/projects/${targetProjectId}/logs`);
+      const data = await res.json().catch(() => null);
 
-      if (data.running && data.logs) {
+      if (!res.ok) {
+        throw new Error(data?.error || `Unable to load logs (${res.status})`);
+      }
+      if (projectIdRef.current !== targetProjectId) return;
+
+      if (Array.isArray(data?.logs)) {
         setLogs(data.logs);
       }
+      setStreamError(null);
     } catch (error) {
       console.error('Fallback fetch failed:', error);
+      if (projectIdRef.current === targetProjectId) {
+        setStreamError(error instanceof Error ? error.message : 'Unable to load terminal output');
+      }
     }
-  };
+  }
 
   const clearLogs = () => {
     setLogs([]);
@@ -404,6 +364,62 @@ export default function TerminalOutput({ projectId, onPortDetected }: TerminalOu
     }
   };
 
+  useEffect(() => {
+    if (DEBUG_TERMINAL) console.log('TerminalOutput project changed:', projectId);
+    projectIdRef.current = projectId;
+    /* eslint-disable react-hooks/set-state-in-effect -- Terminal output is project-scoped and must reset on a project transition. */
+    setLogs([]);
+    setStreamError(null);
+    if (projectId) {
+      detectedPortRef.current = null;
+      lastNotifiedPortRef.current = null;
+      setDetectedPort(null);
+      startStreaming();
+    } else {
+      stopStreaming();
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+
+    return () => stopStreaming();
+    // The stream functions intentionally capture this render's project ID.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  // Reconnect the stream across dev-server lifecycle states.
+  useEffect(() => {
+    const prevStatus = lastStatusRef.current;
+
+    if (!projectId) {
+      if (eventSourceRef.current || prevStatus !== null) stopStreaming();
+      lastStatusRef.current = null;
+      return;
+    }
+
+    const currentStatus = devServerStatus || null;
+    if (currentStatus === 'starting') {
+      if (prevStatus !== 'starting') {
+        stopStreaming();
+        setLogs([]);
+        startStreaming();
+      } else if (!eventSourceRef.current) {
+        startStreaming();
+      }
+    } else if (currentStatus === 'running') {
+      if (!eventSourceRef.current) startStreaming();
+    } else if (currentStatus === 'failed') {
+      if (eventSourceRef.current || prevStatus !== currentStatus) {
+        stopStreaming();
+        void fetchLogsAsFallback(projectId);
+      }
+    } else if (eventSourceRef.current) {
+      stopStreaming();
+    }
+
+    lastStatusRef.current = currentStatus;
+    // The stream functions intentionally capture this render's project ID.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devServerStatus, projectId]);
+
   // Auto-scroll to bottom
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -451,6 +467,11 @@ export default function TerminalOutput({ projectId, onPortDetected }: TerminalOu
 
       {/* Terminal Content */}
       <div className="flex-1 overflow-y-auto p-4 terminal-theme font-mono text-sm">
+        {streamError && (
+          <div className="mb-3 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            Terminal unavailable: {streamError}
+          </div>
+        )}
         {logs.length === 0 ? (
           <div className="text-gray-500 flex items-center justify-center h-full">
             {projectId ? 'No output yet. Start the dev server to see logs.' : 'Select a project to view terminal output'}
@@ -462,7 +483,7 @@ export default function TerminalOutput({ projectId, onPortDetected }: TerminalOu
                 key={i}
                 className="text-gray-300 whitespace-pre-wrap break-words"
                 dangerouslySetInnerHTML={{
-                  __html: converter.current.toHtml(log),
+                  __html: converter.toHtml(log),
                 }}
               />
             ))}

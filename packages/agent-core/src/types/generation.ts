@@ -32,6 +32,8 @@ export type BuildOperationType =
   | 'continuation'
   | 'autofix';
 
+export type GenerationSessionStatus = 'active' | 'completed' | 'failed' | 'cancelled';
+
 export type CodexPhaseId =
   | 'prompt-analysis'
   | 'template-selection'
@@ -96,6 +98,8 @@ export interface CodexSessionState {
 export interface GenerationState {
   id: string; // Unique ID for this generation session
   projectId: string;
+  requestMessageId?: string | null;
+  sessionStatus?: GenerationSessionStatus;
   projectName: string;
   operationType?: BuildOperationType; // Type of build operation
   agentId?: AgentId;

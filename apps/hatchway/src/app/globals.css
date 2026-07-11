@@ -96,7 +96,7 @@
   --secondary: oklch(0.15 0 0);
   --secondary-foreground: oklch(1 0 0);
   --muted: oklch(0.15 0 0);
-  --muted-foreground: oklch(0.6 0 0);
+  --muted-foreground: oklch(0.72 0 0);
   --accent: oklch(0.15 0 0);
   --accent-foreground: oklch(1 0 0);
   --destructive: oklch(0.704 0.191 22.216);
@@ -150,7 +150,7 @@
   --accent-foreground: #c0caf5;
   --border: rgba(122, 162, 247, 0.2);
   --muted: #24283b;
-  --muted-foreground: #565f89;
+  --muted-foreground: #a9b1d6;
 }
 
 /* One Dark Theme - Classic Atom theme */
@@ -180,7 +180,7 @@
   --accent-foreground: #abb2bf;
   --border: rgba(97, 175, 239, 0.2);
   --muted: #3b4048;
-  --muted-foreground: #5c6370;
+  --muted-foreground: #abb2bf;
 }
 
 /* Gruvbox Theme - Retro warm colors */
@@ -210,7 +210,7 @@
   --accent-foreground: #ebdbb2;
   --border: rgba(254, 128, 25, 0.2);
   --muted: #3c3836;
-  --muted-foreground: #928374;
+  --muted-foreground: #bdae93;
 }
 
 /* Dracula Theme - Iconic purple/pink/cyan */
@@ -240,7 +240,7 @@
   --accent-foreground: #f8f8f2;
   --border: rgba(189, 147, 249, 0.2);
   --muted: #44475a;
-  --muted-foreground: #6272a4;
+  --muted-foreground: #c5c8d6;
 }
 
 /* Nord Theme - Arctic blue-gray palette */
@@ -270,7 +270,7 @@
   --accent-foreground: #eceff4;
   --border: rgba(136, 192, 208, 0.2);
   --muted: #434c5e;
-  --muted-foreground: #4c566a;
+  --muted-foreground: #d8dee9;
 }
 
 /* Dark Theme - Traditional dark mode with neutral grays */
@@ -301,7 +301,7 @@
   --accent-foreground: #e5e5e5;
   --border: rgba(255, 255, 255, 0.1);
   --muted: #262626;
-  --muted-foreground: #737373;
+  --muted-foreground: #a3a3a3;
 }
 
 /* Light Theme - Clean light mode with subtle blue accents */
@@ -332,7 +332,7 @@
   --accent-foreground: #1a1a1a;
   --border: #e2e8f0;
   --muted: #f1f5f9;
-  --muted-foreground: #64748b;
+  --muted-foreground: #475569;
   /* Card and sidebar for light mode */
   --card: #ffffff;
   --card-foreground: #1a1a1a;
@@ -1869,6 +1869,22 @@
 
   *::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto !important;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
   }
 }
 

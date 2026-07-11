@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { CommandPalette } from './CommandPalette';
 import { useCommandPalette } from '@/hooks/useCommandPalette';
@@ -8,16 +8,16 @@ import { useCommandPalette } from '@/hooks/useCommandPalette';
 interface CommandPaletteProviderProps {
   children: React.ReactNode;
   onRenameProject?: (project: { id: string; name: string }) => void;
-  onDeleteProject?: (project: { id: string; name: string; slug: string }) => void;
+  onDeleteProject?: (project: { id: string; name: string; slug: string; path?: string | null }) => void;
 }
 
-export function CommandPaletteProvider({ children, onRenameProject, onDeleteProject }: CommandPaletteProviderProps) {
-  const { isOpen, open, close, toggle } = useCommandPalette();
-  const [mounted, setMounted] = useState(false);
+const subscribeToClient = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+export function CommandPaletteProvider({ children, onRenameProject, onDeleteProject }: CommandPaletteProviderProps) {
+  const { isOpen, open: openPalette, close, toggle } = useCommandPalette();
+  const mounted = useSyncExternalStore(subscribeToClient, getClientSnapshot, getServerSnapshot);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -43,7 +43,7 @@ export function CommandPaletteProvider({ children, onRenameProject, onDeleteProj
       {mounted && createPortal(
         <CommandPalette
           open={isOpen}
-          onOpenChange={(open) => (open ? open() : close())}
+          onOpenChange={(nextOpen) => (nextOpen ? openPalette() : close())}
           onRenameProject={onRenameProject}
           onDeleteProject={onDeleteProject}
         />,

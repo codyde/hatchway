@@ -71,8 +71,6 @@ export async function POST(request: Request) {
 
     // Create a promise that resolves when we receive project-metadata
     const analysisPromise = new Promise<AnalysisResult>((resolve, reject) => {
-      let timeoutId: NodeJS.Timeout;
-
       const handler = (event: RunnerEvent) => {
         console.log(`[analyze] Received event: ${event.type}`);
 
@@ -102,7 +100,7 @@ export async function POST(request: Request) {
       };
 
       // Set timeout for analysis
-      timeoutId = setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         removeRunnerEventSubscriber(commandId, handler);
         reject(new Error('Analysis timed out'));
       }, ANALYSIS_TIMEOUT_MS);

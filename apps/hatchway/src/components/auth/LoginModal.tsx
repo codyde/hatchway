@@ -17,12 +17,13 @@ interface LoginModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
+  onBeforeOAuth?: () => void | Promise<void>;
 }
 
 type Mode = "login" | "signup";
 type AuthMethod = "oauth" | "email";
 
-export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
+export function LoginModal({ open, onOpenChange, onSuccess, onBeforeOAuth }: LoginModalProps) {
   const [mode, setMode] = useState<Mode>("login");
   const [authMethod, setAuthMethod] = useState<AuthMethod>("oauth");
   const [email, setEmail] = useState("");
@@ -110,13 +111,18 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
     setError(null);
     setIsGitHubLoading(true);
     try {
-      await signIn.oauth2({
+      await onBeforeOAuth?.();
+      const result = await signIn.oauth2({
         providerId: "github",
-        callbackURL: "/",
+        callbackURL: `${window.location.pathname}${window.location.search}`,
       });
+      if (result.error) {
+        setError(result.error.message || "Failed to initiate GitHub login. Please try again.");
+        setIsGitHubLoading(false);
+      }
     } catch (err) {
       console.error("GitHub OAuth error:", err);
-      setError("Failed to initiate GitHub login. Please try again.");
+      setError(err instanceof Error ? err.message : "Failed to initiate GitHub login. Please try again.");
       setIsGitHubLoading(false);
     }
   };

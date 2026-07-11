@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useState } from "react"
+import { getProjectPreviewUrl } from "@/lib/project-preview-url"
 
 interface RichProjectCardProps {
   project: Project
@@ -78,8 +79,8 @@ export function RichProjectCard({
   const handleOpenBrowser = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    const port = project.devServerPort || project.port || 3000
-    window.open(`http://localhost:${port}`, '_blank')
+    const previewUrl = getProjectPreviewUrl(project)
+    if (previewUrl) window.open(previewUrl, '_blank', 'noopener,noreferrer')
   }
 
   const handleQuickAction = (e: React.MouseEvent, action: () => void) => {
@@ -134,8 +135,9 @@ export function RichProjectCard({
             >
               {isRunning && (
                 <>
-                  <button
-                    onClick={handleOpenBrowser}
+                   <button
+                     onClick={handleOpenBrowser}
+                     disabled={!getProjectPreviewUrl(project)}
                     className="p-1 hover:bg-white/10 rounded transition-colors"
                   >
                     <ExternalLink className="w-3 h-3 text-gray-400" />
@@ -287,6 +289,7 @@ export function RichProjectCard({
           <>
             <button
               onClick={handleOpenBrowser}
+              disabled={!getProjectPreviewUrl(project)}
               className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded transition-colors"
             >
               <ExternalLink className="w-3 h-3" />

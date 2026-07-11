@@ -55,6 +55,9 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return handleAuthError(error);
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+    console.error("Failed to revoke runner key:", error);
+    return NextResponse.json({ error: "Failed to revoke runner key" }, { status: 500 });
   }
 }

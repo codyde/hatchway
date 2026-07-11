@@ -8,6 +8,7 @@ import { useRunner } from "@/contexts/RunnerContext"
 import { useAuth } from "@/contexts/AuthContext"
 import { ProjectList } from "@/components/sidebar/ProjectList"
 import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
 import {
   Sidebar,
   SidebarContent,
@@ -37,7 +38,7 @@ import { signOut } from "@/lib/auth-client"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onRenameProject: (project: { id: string; name: string }) => void;
-  onDeleteProject: (project: { id: string; name: string; slug: string }) => void;
+  onDeleteProject: (project: { id: string; name: string; slug: string; path?: string | null }) => void;
   onOpenOnboarding?: () => void;
 }
 
@@ -169,7 +170,7 @@ export function AppSidebar({ onRenameProject, onDeleteProject, onOpenOnboarding,
           // Collapsed header - just the logo icon
           <HoverCard openDelay={0} closeDelay={0}>
             <HoverCardTrigger asChild>
-              <a href="/" className="flex items-center justify-center">
+              <Link href="/" className="flex items-center justify-center">
 <div 
                                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg p-1.5 border border-white/20"
                                   style={{ background: `linear-gradient(to bottom right, var(--theme-primary), var(--theme-secondary))` }}
@@ -180,7 +181,7 @@ export function AppSidebar({ onRenameProject, onDeleteProject, onOpenOnboarding,
                                     className="h-full w-full object-contain"
                                   />
                                 </div>
-              </a>
+              </Link>
             </HoverCardTrigger>
             <HoverCardContent side="right" align="start" className="w-auto p-3 bg-popover border-border">
               <div className="flex flex-col gap-1">
@@ -221,7 +222,7 @@ export function AppSidebar({ onRenameProject, onDeleteProject, onOpenOnboarding,
               {isCollapsed ? (
                 <HoverCard openDelay={0} closeDelay={0}>
                   <HoverCardTrigger asChild>
-                    <a
+                    <Link
                       href="/"
                       className="flex items-center justify-center w-8 h-8 mx-auto rounded-md transition-all border border-white/20 hover:border-white/40"
                       style={{ 
@@ -230,14 +231,14 @@ export function AppSidebar({ onRenameProject, onDeleteProject, onOpenOnboarding,
                       }}
                     >
                       <Plus className="w-4 h-4" />
-                    </a>
+                    </Link>
                   </HoverCardTrigger>
                   <HoverCardContent side="right" align="center" className="w-auto p-2 px-3 bg-popover border-border">
                     <p className="text-sm text-popover-foreground whitespace-nowrap">New Project</p>
                   </HoverCardContent>
                 </HoverCard>
               ) : (
-                <a
+                <Link
                   href="/"
                   className="flex items-center justify-center gap-2 w-full px-4 py-2 text-sm font-medium rounded-lg transition-all border border-white/20 hover:border-white/40"
                   style={{ 
@@ -247,7 +248,7 @@ export function AppSidebar({ onRenameProject, onDeleteProject, onOpenOnboarding,
                 >
                   <Plus className="w-4 h-4" />
                   <span>New Project</span>
-                </a>
+                </Link>
               )}
             </div>
             <SidebarSeparator className="bg-border" />

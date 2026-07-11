@@ -35,7 +35,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const projects = projectsQuery.data?.projects || [];
   const files = filesQuery.data?.files || [];
   const isLoading = projectsQuery.isLoading;
-  const runnerOnline = runnerStatusQuery.data?.connections.length ? true : null;
+  const runnerOnline = runnerStatusQuery.isPending
+    ? null
+    : Boolean(runnerStatusQuery.data?.connections.length);
 
   const refetch = () => {
     projectsQuery.refetch();

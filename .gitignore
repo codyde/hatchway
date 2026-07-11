@@ -54,6 +54,8 @@ next-env.d.ts
 
 # Log files
 logs/
+!apps/hatchway/src/app/api/projects/[[]id[]]/logs/
+!apps/hatchway/src/app/api/projects/[[]id[]]/logs/route.ts
 nox/
 
 # Node compile cache
