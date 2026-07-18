@@ -78,7 +78,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { OnboardingModal, LocalModeOnboarding } from "@/components/onboarding";
 import { LoginModal as LoginModalComponent } from "@/components/auth/LoginModal";
 import { Button } from "@/components/ui/button";
-import { Monitor, Code, Terminal, MousePointer2, RefreshCw, Copy, Check, Smartphone, Tablet, Cloud, Play, Square, ExternalLink, Loader2, User } from "lucide-react";
+import { Monitor, Code, Terminal, MousePointer2, RefreshCw, Copy, Check, Smartphone, Tablet, Cloud, Play, Square, ExternalLink, Loader2, User, AlertTriangle, X } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -221,6 +221,8 @@ function HomeContent() {
   
   // Onboarding modal state
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // User-dismissed flag for the persistent runner-offline toast; resets when runner returns
+  const [runnerOfflineDismissed, setRunnerOfflineDismissed] = useState(false);
   
   const [input, setInput] = useState("");
   const [imageAttachments, setImageAttachments] = useState<MessagePart[]>([]);
@@ -655,6 +657,13 @@ function HomeContent() {
   const selectedProjectSlug = searchParams?.get("project") ?? null;
   const { projects, refetch, runnerOnline, setActiveProjectId } = useProjects();
   const { selectedRunnerId, setSelectedRunnerId, availableRunners } = useRunner();
+
+  // Allow the offline toast to reappear if the runner comes back online, then drops again
+  useEffect(() => {
+    if (runnerOnline === true) {
+      setRunnerOfflineDismissed(false);
+    }
+  }, [runnerOnline]);
   const {
     selectedAgentId,
     setSelectedAgentId,
@@ -2796,22 +2805,6 @@ function HomeContent() {
           </div>
         )}
         
-        {runnerOnline === false && (
-          <div className="bg-amber-500/20 border border-amber-400/40 text-amber-200 px-4 py-2 text-sm flex flex-wrap items-center justify-between gap-2">
-            <span>
-              Local runner is offline. Start the runner CLI on your machine to
-              enable builds and previews.
-            </span>
-            <button
-              type="button"
-              onClick={() => setShowOnboarding(true)}
-              className="shrink-0 rounded border border-amber-300/50 px-3 py-1 font-medium hover:bg-amber-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200"
-            >
-              Open setup guide
-            </button>
-          </div>
-        )}
-        
         {/* Project's runner disconnected warning. Gated on three signals so a
             missed reconnect event can't leave it stuck: the event-driven
             runnerConnected flag, recent build-WS activity (runnerActive), and
@@ -3550,6 +3543,43 @@ function HomeContent() {
         </div>
       </SidebarInset>
     </SidebarProvider>
+
+      {/* Persistent runner-offline toast: signed-in users only, bottom-right,
+          stays until dismissed (or runner comes back online). */}
+      <AnimatePresence>
+        {(isAuthenticated || isLocalMode) && runnerOnline === false && !runnerOfflineDismissed && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 100, scale: 0.95 }}
+            className="fixed bottom-4 right-4 z-[100] flex max-w-sm items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/20 px-4 py-3 text-amber-100 shadow-xl backdrop-blur-md"
+            role="alert"
+            aria-atomic="true"
+          >
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">
+                Local runner is offline. Start the runner CLI on your machine to enable builds and previews.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowOnboarding(true)}
+                className="mt-2 rounded border border-amber-300/50 px-2.5 py-1 text-xs font-medium text-amber-100 hover:bg-amber-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200"
+              >
+                Open setup guide
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRunnerOfflineDismissed(true)}
+              aria-label="Dismiss notification"
+              className="shrink-0 rounded p-1 transition-colors hover:bg-white/10"
+            >
+              <X className="h-4 w-4 text-amber-200/80" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </CommandPaletteProvider>
     </SDKModeProvider>
   );
