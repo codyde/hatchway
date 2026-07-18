@@ -27,12 +27,81 @@ import next from 'next';
 import { buildWebSocketServer, db } from '@hatchway/agent-core';
 import { onRunnerStatusChange } from '@hatchway/agent-core/lib/runner/broker-state';
 import { projects } from '@hatchway/agent-core/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { projectEvents } from './src/lib/project-events';
 import { enrichProjectWithRunnerStatus } from './src/lib/runner-utils';
 import { getAuth } from './src/lib/auth';
 import { isProjectAccessibleBy } from './src/lib/auth-helpers';
 import { fromNodeHeaders } from 'better-auth/node';
+
+/**
+ * Idempotent schema ensure for build metrics persistence.
+ * Prefer this over full drizzle migrate on boot because production DBs may
+ * predate a complete migration journal.
+ */
+async function ensureBuildMetricsTable(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "build_metrics" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+      "project_id" uuid NOT NULL,
+      "session_id" uuid,
+      "build_id" text,
+      "command_id" text,
+      "status" text NOT NULL,
+      "agent" text,
+      "model" text,
+      "total_ms" integer,
+      "orchestration_ms" integer,
+      "agent_ms" integer,
+      "time_to_first_chunk_ms" integer,
+      "runner_overhead_ms" integer,
+      "total_tokens" integer,
+      "input_tokens" integer,
+      "output_tokens" integer,
+      "cache_read_input_tokens" integer,
+      "cache_creation_input_tokens" integer,
+      "num_turns" integer,
+      "total_cost_usd" text,
+      "dependency_install_total_ms" integer,
+      "dependency_install_calls" integer,
+      "modified_file_count" integer,
+      "completed_todo_count" integer,
+      "error" text,
+      "metrics" jsonb NOT NULL,
+      "created_at" timestamp DEFAULT now() NOT NULL
+    )
+  `);
+
+  await db.execute(sql`
+    DO $$ BEGIN
+      ALTER TABLE "build_metrics"
+        ADD CONSTRAINT "build_metrics_project_id_projects_id_fk"
+        FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id")
+        ON DELETE cascade ON UPDATE no action;
+    EXCEPTION
+      WHEN duplicate_object THEN null;
+      WHEN undefined_table THEN null;
+    END $$
+  `);
+
+  await db.execute(sql`
+    DO $$ BEGIN
+      ALTER TABLE "build_metrics"
+        ADD CONSTRAINT "build_metrics_session_id_generation_sessions_id_fk"
+        FOREIGN KEY ("session_id") REFERENCES "public"."generation_sessions"("id")
+        ON DELETE set null ON UPDATE no action;
+    EXCEPTION
+      WHEN duplicate_object THEN null;
+      WHEN undefined_table THEN null;
+    END $$
+  `);
+
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "build_metrics_project_id_idx" ON "build_metrics" ("project_id")`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "build_metrics_session_id_idx" ON "build_metrics" ("session_id")`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "build_metrics_build_id_idx" ON "build_metrics" ("build_id")`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "build_metrics_created_at_idx" ON "build_metrics" ("created_at")`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "build_metrics_command_id_unique" ON "build_metrics" ("command_id")`);
+}
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || 'localhost';
@@ -51,7 +120,18 @@ const WS_PATHS = ['/ws', '/ws/runner'];
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-app.prepare().then(() => {
+app.prepare().then(async () => {
+  if (process.env.DATABASE_URL) {
+    try {
+      await ensureBuildMetricsTable();
+      console.log('[server] build_metrics table ready');
+    } catch (error) {
+      console.error('[server] Failed to ensure build_metrics table (continuing startup):', error);
+    }
+  } else {
+    console.warn('[server] DATABASE_URL not set; skipping build_metrics ensure');
+  }
+
   // Create HTTP server
   const server = createServer(async (req, res) => {
     try {

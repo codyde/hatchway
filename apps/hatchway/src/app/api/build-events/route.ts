@@ -16,6 +16,7 @@ import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { db } from '@hatchway/agent-core/lib/db/client';
 import {
+  buildMetrics,
   generationSessions,
   generationTodos,
   generationToolCalls,
@@ -24,6 +25,30 @@ import {
 import { eq, and, sql } from 'drizzle-orm';
 import { buildWebSocketServer } from '@hatchway/agent-core/lib/websocket/server';
 import { authenticateRunnerKey, extractRunnerKey, isLocalMode } from '@/lib/auth-helpers';
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asFiniteInt(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.round(value);
+}
+
+function asOptionalText(value: unknown, maxLen = 500): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, maxLen);
+}
+
+function asCostText(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 64);
+  return null;
+}
 
 const SHARED_SECRET = process.env.RUNNER_SHARED_SECRET;
 
@@ -715,16 +740,115 @@ export async function POST(request: Request) {
       }
 
       case 'build-metrics': {
-        // Deliberately log a single structured record instead of adding a schema
-        // migration in the first observability slice. Railway/log collectors can
-        // query this stable prefix and parse the JSON payload.
-        console.log(`[build-metrics] ${JSON.stringify({
+        const metrics = asRecord(event.metrics);
+        const timings = asRecord(metrics.timings);
+        const tokens = asRecord(metrics.tokens);
+        const agentMetrics = asRecord(metrics.agentMetrics);
+        const dependencies = asRecord(metrics.dependencies);
+        const output = asRecord(metrics.output);
+
+        const resolvedCommandId =
+          asOptionalText(metrics.commandId ?? commandId, 200) ?? null;
+        const resolvedBuildId =
+          asOptionalText(metrics.buildId ?? buildId, 200) ?? null;
+        const resolvedStatus =
+          asOptionalText(metrics.status, 32) ?? 'unknown';
+
+        const row = {
           projectId,
           sessionId,
-          buildId,
-          commandId,
-          ...(event.metrics ?? {}),
-        })}`);
+          buildId: resolvedBuildId,
+          commandId: resolvedCommandId,
+          status: resolvedStatus,
+          agent: asOptionalText(metrics.agent, 100),
+          model: asOptionalText(metrics.model, 200),
+          totalMs: asFiniteInt(timings.totalMs),
+          orchestrationMs: asFiniteInt(timings.orchestrationMs),
+          agentMs: asFiniteInt(timings.agentMs),
+          timeToFirstChunkMs: asFiniteInt(timings.timeToFirstChunkMs),
+          runnerOverheadMs: asFiniteInt(timings.runnerOverheadMs),
+          totalTokens: asFiniteInt(tokens.total),
+          inputTokens: asFiniteInt(tokens.input),
+          outputTokens: asFiniteInt(tokens.output),
+          cacheReadInputTokens: asFiniteInt(tokens.cacheReadInput),
+          cacheCreationInputTokens: asFiniteInt(tokens.cacheCreationInput),
+          numTurns: asFiniteInt(agentMetrics.numTurns),
+          totalCostUsd: asCostText(agentMetrics.totalCostUsd),
+          dependencyInstallTotalMs: asFiniteInt(dependencies.installTotalMs),
+          dependencyInstallCalls: asFiniteInt(dependencies.installCalls),
+          modifiedFileCount: asFiniteInt(output.modifiedFileCount),
+          completedTodoCount: asFiniteInt(output.completedTodoCount),
+          error: asOptionalText(metrics.error, 500),
+          metrics: {
+            projectId,
+            sessionId,
+            buildId: resolvedBuildId,
+            commandId: resolvedCommandId,
+            ...metrics,
+          },
+        };
+
+        try {
+          if (resolvedCommandId) {
+            await db.insert(buildMetrics).values(row).onConflictDoUpdate({
+              target: buildMetrics.commandId,
+              set: {
+                projectId: row.projectId,
+                sessionId: row.sessionId,
+                buildId: row.buildId,
+                status: row.status,
+                agent: row.agent,
+                model: row.model,
+                totalMs: row.totalMs,
+                orchestrationMs: row.orchestrationMs,
+                agentMs: row.agentMs,
+                timeToFirstChunkMs: row.timeToFirstChunkMs,
+                runnerOverheadMs: row.runnerOverheadMs,
+                totalTokens: row.totalTokens,
+                inputTokens: row.inputTokens,
+                outputTokens: row.outputTokens,
+                cacheReadInputTokens: row.cacheReadInputTokens,
+                cacheCreationInputTokens: row.cacheCreationInputTokens,
+                numTurns: row.numTurns,
+                totalCostUsd: row.totalCostUsd,
+                dependencyInstallTotalMs: row.dependencyInstallTotalMs,
+                dependencyInstallCalls: row.dependencyInstallCalls,
+                modifiedFileCount: row.modifiedFileCount,
+                completedTodoCount: row.completedTodoCount,
+                error: row.error,
+                metrics: row.metrics,
+              },
+            });
+          } else {
+            await db.insert(buildMetrics).values(row);
+          }
+
+          console.log(`[build-metrics] persisted ${JSON.stringify({
+            projectId,
+            sessionId,
+            buildId: resolvedBuildId,
+            commandId: resolvedCommandId,
+            status: resolvedStatus,
+            totalMs: row.totalMs,
+            agentMs: row.agentMs,
+            orchestrationMs: row.orchestrationMs,
+            dependencyInstallTotalMs: row.dependencyInstallTotalMs,
+            totalTokens: row.totalTokens,
+            agent: row.agent,
+            model: row.model,
+          })}`);
+        } catch (metricsError) {
+          // Keep the log fallback so we never lose the payload if the table
+          // is missing or a write fails before migrations land.
+          console.error('[build-metrics] failed to persist metrics', metricsError);
+          console.log(`[build-metrics] ${JSON.stringify({
+            projectId,
+            sessionId,
+            buildId,
+            commandId,
+            ...metrics,
+          })}`);
+        }
         break;
       }
 

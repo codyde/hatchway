@@ -267,6 +267,45 @@ export const generationNotes = pgTable('generation_notes', {
     .where(sql`${table.textId} is not null`),
 }));
 
+// Durable build timing/cost metrics emitted by the runner at build end.
+// Full payload is kept in `metrics` JSONB; key fields are denormalized for SQL.
+export const buildMetrics = pgTable('build_metrics', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  sessionId: uuid('session_id').references(() => generationSessions.id, { onDelete: 'set null' }),
+  buildId: text('build_id'),
+  commandId: text('command_id'),
+  status: text('status').notNull(), // 'completed' | 'failed'
+  agent: text('agent'),
+  model: text('model'),
+  totalMs: integer('total_ms'),
+  orchestrationMs: integer('orchestration_ms'),
+  agentMs: integer('agent_ms'),
+  timeToFirstChunkMs: integer('time_to_first_chunk_ms'),
+  runnerOverheadMs: integer('runner_overhead_ms'),
+  totalTokens: integer('total_tokens'),
+  inputTokens: integer('input_tokens'),
+  outputTokens: integer('output_tokens'),
+  cacheReadInputTokens: integer('cache_read_input_tokens'),
+  cacheCreationInputTokens: integer('cache_creation_input_tokens'),
+  numTurns: integer('num_turns'),
+  totalCostUsd: text('total_cost_usd'),
+  dependencyInstallTotalMs: integer('dependency_install_total_ms'),
+  dependencyInstallCalls: integer('dependency_install_calls'),
+  modifiedFileCount: integer('modified_file_count'),
+  completedTodoCount: integer('completed_todo_count'),
+  error: text('error'),
+  metrics: jsonb('metrics').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  projectIdIdx: index('build_metrics_project_id_idx').on(table.projectId),
+  sessionIdIdx: index('build_metrics_session_id_idx').on(table.sessionId),
+  buildIdIdx: index('build_metrics_build_id_idx').on(table.buildId),
+  createdAtIdx: index('build_metrics_created_at_idx').on(table.createdAt),
+  // Postgres UNIQUE allows multiple NULLs, so missing commandIds still insert.
+  commandIdUnique: uniqueIndex('build_metrics_command_id_unique').on(table.commandId),
+}));
+
 // ============================================================================
 // Railway Integration Tables
 // ============================================================================
@@ -408,6 +447,8 @@ export type GenerationSession = typeof generationSessions.$inferSelect;
 export type GenerationTodo = typeof generationTodos.$inferSelect;
 export type GenerationToolCall = typeof generationToolCalls.$inferSelect;
 export type GenerationNote = typeof generationNotes.$inferSelect;
+export type BuildMetric = typeof buildMetrics.$inferSelect;
+export type NewBuildMetric = typeof buildMetrics.$inferInsert;
 
 // Railway integration types
 export type RailwayConnection = typeof railwayConnections.$inferSelect;

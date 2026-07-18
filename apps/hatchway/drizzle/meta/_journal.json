@@ -71,6 +71,13 @@
       "when": 1783756942000,
       "tag": "0017_add_generation_request_message",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784304000000,
+      "tag": "0018_add_build_metrics",
+      "breakpoints": true
     }
   ]
 }
