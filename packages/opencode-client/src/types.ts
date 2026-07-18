@@ -19,7 +19,7 @@ export type OpenCodeProvider =
 
 // Common model IDs per provider
 export type AnthropicModelId = 
-  | 'claude-sonnet-4-6'
+  | 'claude-sonnet-5'
   | 'claude-haiku-4-5'
   | 'claude-opus-4-8';
 
@@ -47,7 +47,7 @@ export type OpenCodeModelId =
   | `openrouter/${string}` // Any OpenRouter model
   | string;                // Allow any provider/model combo
 
-export const DEFAULT_OPENCODE_MODEL_ID: OpenCodeModelId = 'anthropic/claude-sonnet-4-6';
+export const DEFAULT_OPENCODE_MODEL_ID: OpenCodeModelId = 'anthropic/claude-sonnet-5';
 
 // Agent types
 export type AgentId = 'opencode' | 'openai-codex';
@@ -61,10 +61,10 @@ export interface ModelMetadata {
 }
 
 export const MODEL_METADATA: Record<string, ModelMetadata> = {
-  'anthropic/claude-sonnet-4-6': {
-    label: 'Claude Sonnet 4.6',
+  'anthropic/claude-sonnet-5': {
+    label: 'Claude Sonnet 5',
     provider: 'anthropic',
-    description: 'Balanced performance and quality',
+    description: 'Best balance of speed and intelligence',
   },
   'anthropic/claude-haiku-4-5': {
     label: 'Claude Haiku 4.5',
@@ -106,7 +106,8 @@ export const MODEL_METADATA: Record<string, ModelMetadata> = {
 // Legacy model mapping for backwards compatibility
 export const LEGACY_MODEL_MAP: Record<string, OpenCodeModelId> = {
   'claude-haiku-4-5': 'anthropic/claude-haiku-4-5',
-  'claude-sonnet-4-6': 'anthropic/claude-sonnet-4-6',
+  'claude-sonnet-5': 'anthropic/claude-sonnet-5',
+  'claude-sonnet-4-6': 'anthropic/claude-sonnet-5',
   'claude-opus-4-8': 'anthropic/claude-opus-4-8',
 };
 
@@ -131,7 +132,7 @@ export function parseModelId(modelId: OpenCodeModelId): { provider: string; mode
   const [provider, ...modelParts] = normalized.split('/');
   return {
     provider: provider || 'anthropic',
-    model: modelParts.join('/') || 'claude-sonnet-4-6',
+    model: modelParts.join('/') || 'claude-sonnet-5',
   };
 }
 

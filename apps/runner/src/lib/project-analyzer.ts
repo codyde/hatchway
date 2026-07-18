@@ -28,13 +28,14 @@ import type { RunnerEvent } from '@hatchway/agent-core';
 
 // Map model IDs to Claude Agent SDK model names
 const MODEL_MAP: Record<string, string> = {
-  'claude-haiku-4-5': 'claude-sonnet-4-6', // Haiku 4.5 not yet available, use Sonnet
-  'claude-sonnet-4-6': 'claude-sonnet-4-6',
+  'claude-haiku-4-5': 'claude-haiku-4-5',
+  'claude-sonnet-5': 'claude-sonnet-5',
+  'claude-sonnet-4-6': 'claude-sonnet-5', // upgrade legacy default
   'claude-opus-4-8': 'claude-opus-4-8',
 };
 
 function resolveModelName(modelId: string): string {
-  return MODEL_MAP[modelId] || 'claude-sonnet-4-6';
+  return MODEL_MAP[modelId] || 'claude-sonnet-5';
 }
 
 /**
@@ -394,7 +395,7 @@ export async function analyzeProject(
   commandId: string
 ): Promise<AnalyzeProjectResult> {
   const { prompt, agent, claudeModel, tags } = options;
-  const model = claudeModel || 'claude-sonnet-4-6';
+  const model = claudeModel || 'claude-sonnet-5';
   
   console.log('[project-analyzer] Starting project analysis...');
   console.log(`[project-analyzer] Agent: ${agent}, Model: ${model}`);

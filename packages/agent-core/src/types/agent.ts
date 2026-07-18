@@ -11,9 +11,10 @@ export type AgentId = 'claude-code' | 'opencode' | 'openai-codex' | 'factory-dro
 export const DEFAULT_AGENT_ID: AgentId = 'claude-code';
 
 // Legacy Claude-specific model IDs (backwards compatibility)
-export type ClaudeModelId = 'claude-haiku-4-5' | 'claude-sonnet-4-6' | 'claude-opus-4-8';
+// Anthropic API ID for Sonnet 5 is `claude-sonnet-5` (dateless alias).
+export type ClaudeModelId = 'claude-haiku-4-5' | 'claude-sonnet-5' | 'claude-opus-4-8';
 
-export const DEFAULT_CLAUDE_MODEL_ID: ClaudeModelId = 'claude-sonnet-4-6';
+export const DEFAULT_CLAUDE_MODEL_ID: ClaudeModelId = 'claude-sonnet-5';
 
 // New OpenCode model format: provider/model
 export type OpenCodeModelId = 
@@ -26,13 +27,15 @@ export type OpenCodeModelId =
   | `openrouter/${string}`
   | string;
 
-export const DEFAULT_OPENCODE_MODEL_ID: OpenCodeModelId = 'anthropic/claude-sonnet-4-6';
+export const DEFAULT_OPENCODE_MODEL_ID: OpenCodeModelId = 'anthropic/claude-sonnet-5';
 
 // Legacy model mapping
 export const LEGACY_MODEL_MAP: Record<string, OpenCodeModelId> = {
   'claude-haiku-4-5': 'anthropic/claude-haiku-4-5',
-  'claude-sonnet-4-6': 'anthropic/claude-sonnet-4-6',
+  'claude-sonnet-5': 'anthropic/claude-sonnet-5',
   'claude-opus-4-8': 'anthropic/claude-opus-4-8',
+  // Upgrade previously-saved Sonnet 4.6 selections to Sonnet 5
+  'claude-sonnet-4-6': 'anthropic/claude-sonnet-5',
   // Legacy aliases — upgrade previously-saved selections to the current model
   'claude-opus-4-6': 'anthropic/claude-opus-4-8',
   'claude-opus-4-6-20251101': 'anthropic/claude-opus-4-8',
@@ -58,7 +61,7 @@ export function parseModelId(modelId: string): { provider: string; model: string
   const [provider, ...modelParts] = normalized.split('/');
   return {
     provider: provider || 'anthropic',
-    model: modelParts.join('/') || 'claude-sonnet-4-6',
+    model: modelParts.join('/') || 'claude-sonnet-5',
   };
 }
 
@@ -75,9 +78,9 @@ export const CLAUDE_MODEL_METADATA: Record<ClaudeModelId, ModelMetadata> = {
     description: 'Fast and efficient Claude model',
     provider: 'anthropic',
   },
-  'claude-sonnet-4-6': {
-    label: 'Claude Sonnet 4.6',
-    description: 'Balanced performance and quality',
+  'claude-sonnet-5': {
+    label: 'Claude Sonnet 5',
+    description: 'Best balance of speed and intelligence',
     provider: 'anthropic',
   },
   'claude-opus-4-8': {
@@ -94,9 +97,9 @@ export const MODEL_METADATA: Record<string, ModelMetadata> = {
     description: 'Fast and efficient',
     provider: 'anthropic',
   },
-  'anthropic/claude-sonnet-4-6': {
-    label: 'Claude Sonnet 4.6',
-    description: 'Balanced performance and quality',
+  'anthropic/claude-sonnet-5': {
+    label: 'Claude Sonnet 5',
+    description: 'Best balance of speed and intelligence',
     provider: 'anthropic',
   },
   'anthropic/claude-opus-4-8': {
