@@ -51,12 +51,12 @@ export const TAG_DEFINITIONS: TagDefinition[] = [
     inputType: 'select',
     options: [
       {
-        value: 'claude-sonnet-4-6',
-        label: 'Claude Sonnet 4.6',
-        description: 'Anthropic Claude - Balanced performance and speed',
+        value: 'claude-sonnet-5',
+        label: 'Claude Sonnet 5',
+        description: 'Anthropic Claude - Best balance of speed and intelligence',
         logo: '/claude.png',
         provider: 'claude-code',
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-5',
         sdk: 'agent'
       },
       {

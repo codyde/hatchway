@@ -38,7 +38,7 @@ async function main() {
       timeout: 30000, // 30 second timeout for server start
       config: {
         // Default model - can be overridden per request
-        model: process.env.OPENCODE_DEFAULT_MODEL || 'anthropic/claude-sonnet-4-6',
+        model: process.env.OPENCODE_DEFAULT_MODEL || 'anthropic/claude-sonnet-5',
       },
     });
     

@@ -227,7 +227,7 @@ async function runBuildPipeline(params: BuildPipelineParams) {
   const { projectId: id, prompt, operationType, context, writer, query, agent, claudeModel } = params;
   const agentId: AgentId = agent ?? DEFAULT_AGENT_ID;
   const resolvedClaudeModel: ClaudeModelId =
-    agentId === 'claude-code' && (claudeModel === 'claude-haiku-4-5' || claudeModel === 'claude-sonnet-4-6' || claudeModel === 'claude-opus-4-8')
+    agentId === 'claude-code' && (claudeModel === 'claude-haiku-4-5' || claudeModel === 'claude-sonnet-5' || claudeModel === 'claude-opus-4-8')
       ? claudeModel
       : DEFAULT_CLAUDE_MODEL_ID;
 

@@ -19,9 +19,9 @@ function draft(savedAt: number): PendingAuthDraft {
     }],
     project: null,
     buildConfig: {
-      appliedTags: [{ key: 'model', value: 'claude-sonnet-4-6', appliedAt: new Date(savedAt).toISOString() }],
+      appliedTags: [{ key: 'model', value: 'claude-sonnet-5', appliedAt: new Date(savedAt).toISOString() }],
       selectedAgentId: 'claude-code',
-      selectedClaudeModelId: 'claude-sonnet-4-6',
+      selectedClaudeModelId: 'claude-sonnet-5',
       selectedRunnerId: 'runner-1',
       executionMode: 'sandbox',
     },
@@ -33,7 +33,7 @@ test('preserves image payloads larger than sessionStorage quotas', () => {
   const parsed = parsePendingAuthDraft(draft(savedAt), savedAt);
 
   assert.equal(parsed?.images[0].image.length, 6 * 1024 * 1024 + 'data:image/png;base64,'.length);
-  assert.equal(parsed?.buildConfig.appliedTags[0].value, 'claude-sonnet-4-6');
+  assert.equal(parsed?.buildConfig.appliedTags[0].value, 'claude-sonnet-5');
 });
 
 test('rejects expired or malformed recovery records', () => {

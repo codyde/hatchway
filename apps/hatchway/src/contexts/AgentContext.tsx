@@ -81,8 +81,16 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     }
 
     const storedClaudeModel = window.localStorage.getItem(CLAUDE_MODEL_STORAGE_KEY);
-    if (storedClaudeModel === 'claude-haiku-4-5' || storedClaudeModel === 'claude-sonnet-4-6' || storedClaudeModel === 'claude-opus-4-8') {
+    if (
+      storedClaudeModel === 'claude-haiku-4-5' ||
+      storedClaudeModel === 'claude-sonnet-5' ||
+      storedClaudeModel === 'claude-opus-4-8'
+    ) {
       setSelectedClaudeModelIdState(storedClaudeModel);
+    } else if (storedClaudeModel === 'claude-sonnet-4-6') {
+      // Upgrade saved Sonnet 4.6 preference to Sonnet 5
+      setSelectedClaudeModelIdState('claude-sonnet-5');
+      window.localStorage.setItem(CLAUDE_MODEL_STORAGE_KEY, 'claude-sonnet-5');
     }
   }, []);
 

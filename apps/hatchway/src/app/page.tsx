@@ -711,7 +711,7 @@ function HomeContent() {
   const selectedClaudeModel = claudeModels.find(
     (model) => model.id === selectedClaudeModelId,
   );
-  const selectedClaudeModelLabel = selectedClaudeModel?.label ?? "Claude Sonnet 4.6";
+  const selectedClaudeModelLabel = selectedClaudeModel?.label ?? "Claude Sonnet 5";
 
   const clearDraftRecovery = useCallback(async () => {
     setHasRecoveredDraft(false);

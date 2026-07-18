@@ -2319,7 +2319,7 @@ export async function startRunner(options: RunnerOptions = {}) {
         const claudeModelFromPayload = command.payload?.claudeModel;
         const model = agent === 'claude-code' && 
           (claudeModelFromPayload === 'claude-haiku-4-5' || 
-           claudeModelFromPayload === 'claude-sonnet-4-6' || 
+           claudeModelFromPayload === 'claude-sonnet-5' || 
            claudeModelFromPayload === 'claude-opus-4-8')
           ? claudeModelFromPayload
           : DEFAULT_CLAUDE_MODEL_ID;
@@ -2369,7 +2369,7 @@ export async function startRunner(options: RunnerOptions = {}) {
           const claudeModel: ClaudeModelId =
             agent === "claude-code" &&
             (command.payload.claudeModel === "claude-haiku-4-5" ||
-              command.payload.claudeModel === "claude-sonnet-4-6" ||
+              command.payload.claudeModel === "claude-sonnet-5" ||
               command.payload.claudeModel === "claude-opus-4-8")
               ? command.payload.claudeModel
               : DEFAULT_CLAUDE_MODEL_ID;
