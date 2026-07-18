@@ -888,7 +888,8 @@ const ENABLE_FACTORY_SDK = process.env.ENABLE_FACTORY_SDK === 'true';
 function createBuildQuery(
   agent: AgentId,
   modelId?: ClaudeModelId | OpenCodeModelId,
-  abortController?: AbortController
+  abortController?: AbortController,
+  operationType?: string,
 ): BuildQueryFn {
   // When OpenCode SDK is enabled, route ALL requests through it (including Codex)
   if (ENABLE_OPENCODE_SDK) {
@@ -912,15 +913,19 @@ function createBuildQuery(
     if (!ENABLE_FACTORY_SDK) {
       console.warn('[runner] ⚠️ Factory Droid requested but ENABLE_FACTORY_SDK is not set');
       console.warn('[runner] ⚠️ Falling back to native Claude Agent SDK');
-      return createNativeClaudeQuery(DEFAULT_CLAUDE_MODEL_ID, abortController);
+      return createNativeClaudeQuery(DEFAULT_CLAUDE_MODEL_ID, abortController, { operationType });
     }
     console.log('[runner] 🔄 Using Factory Droid SDK');
     return createDroidQuery(modelId as string);
   }
 
   // Default: Use native Claude Agent SDK (direct integration)
-  console.log('[runner] 🔄 Using NATIVE Claude Agent SDK');
-  return createNativeClaudeQuery((modelId as ClaudeModelId) ?? DEFAULT_CLAUDE_MODEL_ID, abortController);
+  console.log(`[runner] 🔄 Using NATIVE Claude Agent SDK (op=${operationType ?? 'default'})`);
+  return createNativeClaudeQuery(
+    (modelId as ClaudeModelId) ?? DEFAULT_CLAUDE_MODEL_ID,
+    abortController,
+    { operationType },
+  );
 }
 
 /**
@@ -2417,7 +2422,12 @@ export async function startRunner(options: RunnerOptions = {}) {
 
           // Select the appropriate model for the agent
           const modelId = agent === "factory-droid" ? droidModel : claudeModel;
-          const agentQuery = createBuildQuery(agent, modelId as ClaudeModelId, buildAbortController);
+          const agentQuery = createBuildQuery(
+            agent,
+            modelId as ClaudeModelId,
+            buildAbortController,
+            command.payload.operationType,
+          );
 
           // Reset transformer state for new build
           resetTransformerState();

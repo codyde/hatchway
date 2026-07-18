@@ -127,11 +127,25 @@ ${context.fileTree}`);
 
 function buildFullPrompt(context: AgentStrategyContext, basePrompt: string): string {
   if (!context.isNewProject) {
+    if (context.operationType === 'autofix') {
+      return `${basePrompt}
+
+## Autofix Speed Rules
+1. Diagnose from the error first; only open files implicated by the stack/log.
+2. Make the smallest fix that restores startup; avoid refactors and design changes.
+3. Re-run the failing command once, fix remaining errors, then stop.`;
+    }
     return basePrompt;
   }
   return `${basePrompt}
 
-CRITICAL: The template has already been prepared in ${context.workingDirectory}. Do not scaffold a new project.`;
+CRITICAL: The template has already been prepared in ${context.workingDirectory}. Do not scaffold a new project.
+
+## Speed Rules
+1. Emit one short TODO_WRITE plan (≤8 items), then implement immediately.
+2. Do not fetch external docs, browse the web, or explore alternative architectures.
+3. One dependency install after package.json changes; one build/typecheck; fix only real failures.
+4. Finish when the request is met and validation is clean — no extra polish turns.`;
 }
 
 const claudeStrategy: AgentStrategy = {
