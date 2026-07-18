@@ -9,10 +9,11 @@ export interface ProjectManifestOptions {
   maxContentChars?: number;
 }
 
-const DEFAULT_MAX_DEPTH = 5;
-const DEFAULT_MAX_ENTRIES = 220;
-const DEFAULT_MAX_CONTENT_CHARS = 24_000;
-const MAX_FILE_CHARS = 6_000;
+// Keep the injected project tree lean so first-turn prefill stays small.
+const DEFAULT_MAX_DEPTH = 4;
+const DEFAULT_MAX_ENTRIES = 120;
+const DEFAULT_MAX_CONTENT_CHARS = 16_000;
+const MAX_FILE_CHARS = 4_000;
 
 const EXCLUDED_DIRECTORIES = new Set([
   '.git',

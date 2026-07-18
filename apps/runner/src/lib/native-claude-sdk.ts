@@ -201,6 +201,46 @@ function buildPromptWithImages(prompt: string, messageParts?: MessagePart[]): st
 }
 
 /**
+ * Operation-aware turn budgets. Production builds were spending most wall time
+ * in model turns (not tools); caps prevent long exploratory loops while still
+ * leaving headroom for real multi-file work.
+ */
+export function resolveClaudeMaxTurns(operationType?: string): number {
+  switch (operationType) {
+    case 'autofix':
+      return 20;
+    case 'focused-edit':
+      return 15;
+    case 'enhancement':
+      return 35;
+    case 'continuation':
+      return 30;
+    case 'initial-build':
+    default:
+      return 40;
+  }
+}
+
+/** Core coding tools only — blocks TodoWrite/Task/MCP/web that burn turns. */
+const CLAUDE_BUILD_TOOLS = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'] as const;
+
+const CLAUDE_DISALLOWED_TOOLS = [
+  'TodoWrite',
+  'Task',
+  'ExitPlanMode',
+  'AskUserQuestion',
+  'Skill',
+  'WebSearch',
+  'WebFetch',
+  'NotebookEdit',
+] as const;
+
+export interface NativeClaudeQueryOptions {
+  maxTurns?: number;
+  operationType?: string;
+}
+
+/**
  * Create a native Claude query function using the official SDK directly
  *
  * This replaces the previous approach of:
@@ -211,8 +251,12 @@ function buildPromptWithImages(prompt: string, messageParts?: MessagePart[]): st
  */
 export function createNativeClaudeQuery(
   modelId: ClaudeModelId = DEFAULT_CLAUDE_MODEL_ID,
-  abortController?: AbortController
+  abortController?: AbortController,
+  queryOptions: NativeClaudeQueryOptions = {},
 ) {
+  const resolvedMaxTurns =
+    queryOptions.maxTurns ?? resolveClaudeMaxTurns(queryOptions.operationType);
+
   return async function* nativeClaudeQuery(
     prompt: string,
     workingDirectory: string,
@@ -225,6 +269,7 @@ export function createNativeClaudeQuery(
     debugLog(`[runner] [native-sdk] Model: ${modelId}\n`);
     debugLog(`[runner] [native-sdk] Working dir: ${workingDirectory}\n`);
     debugLog(`[runner] [native-sdk] Prompt length: ${prompt.length}\n`);
+    debugLog(`[runner] [native-sdk] maxTurns: ${resolvedMaxTurns} (op=${queryOptions.operationType ?? 'default'})\n`);
 
     // Build combined system prompt
     const systemPromptSegments: string[] = [CLAUDE_SYSTEM_PROMPT.trim()];
@@ -259,7 +304,7 @@ export function createNativeClaudeQuery(
       cwd: workingDirectory,
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true, // Required for bypassPermissions
-      maxTurns: 100,
+      maxTurns: resolvedMaxTurns,
       additionalDirectories: [workingDirectory],
       canUseTool: createProjectScopedPermissionHandler(workingDirectory),
       includePartialMessages: false, // We don't need streaming deltas
@@ -279,9 +324,10 @@ export function createNativeClaudeQuery(
         // Enable SDK debug logging only when explicitly diagnosing the SDK.
         ...(process.env.DEBUG_SKILLS === '1' ? { DEBUG_CLAUDE_AGENT_SDK: '1' } : {}),
       },
-      // Use Claude Code's file, search, shell, and web tools. Progress is sent
-      // through the inline TODO_WRITE protocol rather than extra task-tool turns.
-      tools: { type: 'preset', preset: 'claude_code' },
+      // Restrict to coding tools only. Progress uses inline TODO_WRITE text;
+      // TodoWrite/Task/MCP/web tools only add expensive turns.
+      tools: [...CLAUDE_BUILD_TOOLS],
+      disallowedTools: [...CLAUDE_DISALLOWED_TOOLS],
       // Pass abort controller for cancellation support
       // NOTE: There is a known bug in the Claude Agent SDK where AbortController
       // signals are not fully respected. When abort() is called, the SDK may
