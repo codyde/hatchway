@@ -486,6 +486,21 @@ export function createNativeClaudeQuery(
 
       debugLog(`[runner] [native-sdk] 📊 Stream complete - ${messageCount} messages, ${toolCallCount} tool calls, ${textBlockCount} text blocks\n`);
     } catch (error) {
+      // Early-stop and user cancel abort the query. End the generator cleanly so
+      // the runner can mark the build completed instead of failed.
+      const err = error as { name?: string; message?: string; code?: string } | null;
+      const message = String(err?.message ?? error ?? '').toLowerCase();
+      const isAbort =
+        err?.name === 'AbortError' ||
+        err?.code === 'ABORT_ERR' ||
+        message.includes('abort') ||
+        abortController?.signal.aborted;
+
+      if (isAbort) {
+        debugLog(`[runner] [native-sdk] ⏹️  Query aborted after ${messageCount} messages (treating as clean stop)\n`);
+        return;
+      }
+
       debugLog(`[runner] [native-sdk] ❌ Error: ${error instanceof Error ? error.message : String(error)}\n`);
       throw error;
     }

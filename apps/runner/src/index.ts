@@ -423,6 +423,26 @@ function shouldEarlyStopOnTodos(
   return actionable.every((todo) => todo.status === 'completed');
 }
 
+function isAbortLikeError(error: unknown): boolean {
+  if (!error) return false;
+  if (typeof error === 'object') {
+    const err = error as { name?: string; message?: string; code?: string };
+    if (err.name === 'AbortError' || err.name === 'AbortSignal' || err.code === 'ABORT_ERR') {
+      return true;
+    }
+    const message = String(err.message ?? '').toLowerCase();
+    if (
+      message.includes('aborted') ||
+      message.includes('abort') ||
+      message.includes('this operation was aborted') ||
+      message.includes('controllermessagequeue')
+    ) {
+      return true;
+    }
+  }
+  return String(error).toLowerCase().includes('abort');
+}
+
 function createBuildMetrics(
   context: BuildContext,
   status: 'completed' | 'failed',
@@ -2465,6 +2485,15 @@ export async function startRunner(options: RunnerOptions = {}) {
         fileLog.info("Agent:", command.payload?.agent);
         fileLog.info("Template:", command.payload?.template);
 
+        // Early-stop is intentional success (todos done after implementation).
+        // Hoisted so abort/cancel errors can still complete the build cleanly.
+        let earlyStopTriggered = false;
+        let earlyStopReason: string | undefined;
+        const filesModified = new Set<string>();
+        const completedTodos: string[] = [];
+        let latestTodos: TrackedTodo[] = [];
+        let implementedViaTools = false;
+
         try {
           loggedFirstChunk = false;
           if (!command.payload?.prompt || !command.payload?.operationType) {
@@ -2672,24 +2701,23 @@ export async function startRunner(options: RunnerOptions = {}) {
           const decoder = new TextDecoder();
 
           let chunkCount = 0;
-          
-          // Track files modified and todos for build summary / early-stop.
-          const filesModified = new Set<string>();
-          const completedTodos: string[] = [];
-          let latestTodos: TrackedTodo[] = [];
-          let implementedViaTools = false;
-          let earlyStopTriggered = false;
+
           const requestEarlyStop = async (reason: string) => {
             if (earlyStopTriggered) return;
             earlyStopTriggered = true;
+            earlyStopReason = reason;
             buildLog(` ⏹️  Early stop: ${reason}`);
+            // Prefer cancelling the stream consumer first. Aborting the SDK is a
+            // best-effort follow-up; abort errors must not flip the build to failed.
             try {
               await reader.cancel(reason);
             } catch {
               // reader may already be closed
             }
             try {
-              buildAbortController.abort();
+              if (!buildAbortController.signal.aborted) {
+                buildAbortController.abort();
+              }
             } catch {
               // ignore repeated abort
             }
@@ -3112,7 +3140,7 @@ export async function startRunner(options: RunnerOptions = {}) {
                 completedTodoCount: completedTodos.length,
                 earlyStop: earlyStopTriggered,
                 earlyStopReason: earlyStopTriggered
-                  ? 'todos_completed_after_implementation'
+                  ? (earlyStopReason ?? 'todos_completed_after_implementation')
                   : undefined,
               },
             );
@@ -3240,6 +3268,89 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
           }
           activeBuildContexts.delete(command.id);
         } catch (error) {
+          // Intentional early-stop aborts the SDK/stream. Treat that as success
+          // if we already implemented work; otherwise keep the real failure path.
+          const abortLooksIntentional =
+            earlyStopTriggered ||
+            (isAbortLikeError(error) && (implementedViaTools || completedTodos.length > 0 || filesModified.size > 0));
+
+          if (abortLooksIntentional) {
+            earlyStopTriggered = true;
+            earlyStopReason ??= 'todos_completed_after_implementation';
+            buildLog(` ⏹️  Treating abort as successful early stop (${earlyStopReason})`);
+
+            const completedBuildContext = activeBuildContexts.get(command.id);
+            const earlyStopDirectory = completedBuildContext?.projectDirectory;
+            if (completedBuildContext && earlyStopDirectory) {
+              completedBuildContext.agentCompletedAt ??= Date.now();
+              try {
+                completedBuildContext.dependencyStateAfter = hasSuccessfulDependencyInstall(completedBuildContext)
+                  ? await recordDependencyState(earlyStopDirectory)
+                  : await inspectDependencyState(earlyStopDirectory);
+              } catch (dependencyStateError) {
+                log('[build] Failed to record dependency state after early stop:', dependencyStateError);
+              }
+            }
+
+            let detectedFramework: string | null = null;
+            if (earlyStopDirectory) {
+              try {
+                const { detectFrameworkFromFilesystem } = await import('@hatchway/agent-core/lib/port-allocator');
+                detectedFramework = await detectFrameworkFromFilesystem(earlyStopDirectory);
+              } catch (frameworkError) {
+                log('[build] Failed to detect framework after early stop:', frameworkError);
+              }
+            }
+
+            const buildEndTime = Date.now();
+            if (completedBuildContext) {
+              const buildMetrics = createBuildMetrics(
+                completedBuildContext,
+                'completed',
+                buildEndTime,
+                {
+                  modifiedFileCount: filesModified.size,
+                  completedTodoCount: completedTodos.length,
+                  earlyStop: true,
+                  earlyStopReason,
+                },
+              );
+              buildLog(`[timing] ${JSON.stringify(buildMetrics)}`);
+              void persistBuildEventDirect(completedBuildContext, {
+                type: 'build-metrics',
+                metrics: buildMetrics,
+              }).catch((metricsError) => {
+                debugLog('Failed to persist early-stop build metrics:', metricsError);
+              });
+            }
+
+            sendEvent({
+              type: "build-stream",
+              ...buildEventBase(command.projectId, command.id),
+              data: "data: [DONE]\n\n",
+            });
+            sendEvent({
+              type: "build-completed",
+              ...buildEventBase(command.projectId, command.id),
+              payload: {
+                todos: [],
+                detectedFramework,
+              },
+            });
+            sendEvent({
+              type: "ack",
+              ...buildEventBase(command.projectId, command.id),
+              message: "build-complete-ready-for-dev-server",
+            });
+
+            printEventSummary();
+            if (completedBuildContext) {
+              startedSessions.delete(completedBuildContext.sessionId);
+            }
+            activeBuildContexts.delete(command.id);
+            break;
+          }
+
           const errorMessage = error instanceof Error ? error.message : "Failed to run build";
           logger.buildFailed(errorMessage);
 
