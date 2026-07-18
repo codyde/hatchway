@@ -310,6 +310,119 @@ function hasSuccessfulDependencyInstall(context: BuildContext): boolean {
   );
 }
 
+type TrackedTodoStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+type TrackedTodo = {
+  id: string;
+  content: string;
+  status: TrackedTodoStatus;
+  priority?: 'high' | 'medium' | 'low';
+};
+
+function normalizeTodoStatus(value: unknown): TrackedTodoStatus {
+  const status = String(value ?? 'pending').toLowerCase().replace(/[\s-]+/g, '_');
+  if (status === 'completed' || status === 'complete' || status === 'done') return 'completed';
+  if (status === 'in_progress' || status === 'inprogress' || status === 'active') return 'in_progress';
+  if (status === 'cancelled' || status === 'canceled') return 'cancelled';
+  return 'pending';
+}
+
+/**
+ * Normalize TodoWrite payloads from Claude/Droid/Codex into a stable list.
+ * Claude may send `todos` as an array, JSON string, or numbered checklist text.
+ */
+function parseTodoWriteInput(input: unknown): TrackedTodo[] {
+  if (!input || typeof input !== 'object') return [];
+  const raw = input as Record<string, unknown>;
+  const source = raw.todos ?? raw.items ?? raw.tasks;
+  if (source == null) return [];
+
+  const fromObject = (item: Record<string, unknown>, idx: number): TrackedTodo => ({
+    id: typeof item.id === 'string' && item.id.length > 0
+      ? item.id
+      : `todo-${Date.now()}-${idx}`,
+    content: String(item.content ?? item.activeForm ?? item.title ?? item.text ?? `Task ${idx + 1}`).trim(),
+    status: normalizeTodoStatus(item.status),
+    priority: typeof item.priority === 'string'
+      ? item.priority as 'high' | 'medium' | 'low'
+      : undefined,
+  });
+
+  if (Array.isArray(source)) {
+    return source
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+      .map((item, idx) => fromObject(item, idx))
+      .filter((item) => item.content.length > 0);
+  }
+
+  if (typeof source === 'string') {
+    const trimmed = source.trim();
+    if (!trimmed) return [];
+
+    // JSON array/object string
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        if (Array.isArray(parsed)) {
+          return parseTodoWriteInput({ todos: parsed });
+        }
+        if (parsed && typeof parsed === 'object') {
+          return parseTodoWriteInput(parsed);
+        }
+      } catch {
+        // fall through to numbered checklist parser
+      }
+    }
+
+    // "1. [completed] Task" / "- [x] Task"
+    const lines = trimmed.split('\n').map((line) => line.trim()).filter(Boolean);
+    return lines.map((line, idx) => {
+      const numbered = line.match(/^\d+\.\s*\[(\w+)\]\s*(.+)$/i);
+      if (numbered) {
+        return {
+          id: `todo-${Date.now()}-${idx}`,
+          content: numbered[2].trim(),
+          status: normalizeTodoStatus(numbered[1]),
+        };
+      }
+      const checkbox = line.match(/^[-*]\s*\[([ xX])\]\s*(.+)$/);
+      if (checkbox) {
+        return {
+          id: `todo-${Date.now()}-${idx}`,
+          content: checkbox[2].trim(),
+          status: (checkbox[1].toLowerCase() === 'x' ? 'completed' : 'pending') as TrackedTodoStatus,
+        };
+      }
+      return {
+        id: `todo-${Date.now()}-${idx}`,
+        content: line.replace(/^\d+\.\s*/, '').trim(),
+        status: 'pending' as const,
+      };
+    }).filter((item) => item.content.length > 0);
+  }
+
+  return [];
+}
+
+function isImplementationTool(toolName: unknown): boolean {
+  if (typeof toolName !== 'string') return false;
+  return /^(Write|Edit|NotebookEdit)$/i.test(toolName);
+}
+
+/**
+ * Soft-stop when the model has finished its own plan after real implementation work.
+ * Requires enough todos to avoid aborting on a single stub checklist item.
+ */
+function shouldEarlyStopOnTodos(
+  todos: TrackedTodo[],
+  options: { implemented: boolean; minTodos?: number },
+): boolean {
+  const minTodos = options.minTodos ?? 2;
+  if (!options.implemented || todos.length < minTodos) return false;
+  const actionable = todos.filter((todo) => todo.status !== 'cancelled');
+  if (actionable.length === 0) return false;
+  return actionable.every((todo) => todo.status === 'completed');
+}
+
 function createBuildMetrics(
   context: BuildContext,
   status: 'completed' | 'failed',
@@ -318,6 +431,8 @@ function createBuildMetrics(
     error?: string;
     modifiedFileCount?: number;
     completedTodoCount?: number;
+    earlyStop?: boolean;
+    earlyStopReason?: string;
   } = {},
 ) {
   const elapsedMs = endedAt - context.startTime;
@@ -386,6 +501,8 @@ function createBuildMetrics(
     output: {
       modifiedFileCount: extras.modifiedFileCount ?? 0,
       completedTodoCount: extras.completedTodoCount ?? 0,
+      earlyStop: extras.earlyStop ?? false,
+      ...(extras.earlyStopReason ? { earlyStopReason: extras.earlyStopReason } : {}),
     },
   };
 }
@@ -2556,11 +2673,33 @@ export async function startRunner(options: RunnerOptions = {}) {
 
           let chunkCount = 0;
           
-          // Track files modified and todos for build summary
+          // Track files modified and todos for build summary / early-stop.
           const filesModified = new Set<string>();
           const completedTodos: string[] = [];
+          let latestTodos: TrackedTodo[] = [];
+          let implementedViaTools = false;
+          let earlyStopTriggered = false;
+          const requestEarlyStop = async (reason: string) => {
+            if (earlyStopTriggered) return;
+            earlyStopTriggered = true;
+            buildLog(` ⏹️  Early stop: ${reason}`);
+            try {
+              await reader.cancel(reason);
+            } catch {
+              // reader may already be closed
+            }
+            try {
+              buildAbortController.abort();
+            } catch {
+              // ignore repeated abort
+            }
+          };
           
           while (true) {
+            if (earlyStopTriggered) {
+              buildLog(` Stream stopped early after ${chunkCount} chunks`);
+              break;
+            }
             const { value, done } = await reader.read();
             if (done) {
               buildLog(
@@ -2688,6 +2827,31 @@ export async function startRunner(options: RunnerOptions = {}) {
                         });
                       }
                     }
+
+                    // Track TodoWrite from the raw SDK tool_use path so metrics
+                    // and early-stop still work if SSE transform naming differs.
+                    if (typeof toolName === 'string' && /todowrite/i.test(toolName)) {
+                      const parsedTodos = parseTodoWriteInput(block.input);
+                      if (parsedTodos.length > 0) {
+                        latestTodos = parsedTodos;
+                        logger.updateTodos(parsedTodos);
+                        const completed = parsedTodos
+                          .filter((t) => t.status === 'completed' && !t.content.toLowerCase().includes('summarize'))
+                          .map((t) => t.content);
+                        completedTodos.length = 0;
+                        completedTodos.push(...completed);
+
+                        if (shouldEarlyStopOnTodos(parsedTodos, { implemented: implementedViaTools })) {
+                          await requestEarlyStop(
+                            `all ${parsedTodos.length} todos completed after implementation`,
+                          );
+                        }
+                      }
+                    }
+
+                    if (isImplementationTool(toolName)) {
+                      implementedViaTools = true;
+                    }
                     
                     if (DEBUG_BUILD) {
                       buildLog(`    Input: ${truncateJSON(block.input, 200)}`);
@@ -2791,58 +2955,33 @@ export async function startRunner(options: RunnerOptions = {}) {
                     filesModified.add(relativePath);
                   }
                 }
-                // Track completed todos for summary context
-                if (toolEvent.toolName === 'TodoWrite' && toolEvent.input) {
-                  const rawInput = toolEvent.input as { todos?: string | Array<{ id?: string; content: string; status: string; priority?: string }> };
-                  
-                  // Handle both formats:
-                  // 1. Droid CLI format: string with numbered list like "1. [completed] Task"
-                  // 2. Claude format: array of objects with content, status, etc.
-                  let todoItems: Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' | 'cancelled'; priority?: 'high' | 'medium' | 'low' }> = [];
-                  
-                  if (typeof rawInput.todos === 'string') {
-                    // Parse droid CLI string format: "1. [completed] First task\n2. [in_progress] Second task"
-                    const lines = rawInput.todos.split('\n').filter(l => l.trim());
-                    todoItems = lines.map((line, idx) => {
-                      // Match patterns like "1. [completed] Task content" or "1. [in_progress] Task"
-                      const match = line.match(/^\d+\.\s*\[(\w+)\]\s*(.+)$/);
-                      if (match) {
-                        const [, statusStr, content] = match;
-                        const status = statusStr as 'pending' | 'in_progress' | 'completed' | 'cancelled';
-                        return {
-                          id: `todo-${Date.now()}-${idx}`,
-                          content: content.trim(),
-                          status,
-                        };
-                      }
-                      // Fallback: treat line as pending task
-                      return {
-                        id: `todo-${Date.now()}-${idx}`,
-                        content: line.replace(/^\d+\.\s*/, '').trim(),
-                        status: 'pending' as const,
-                      };
-                    });
-                  } else if (Array.isArray(rawInput.todos)) {
-                    // Claude format: array of objects
-                    todoItems = rawInput.todos.map(t => ({
-                      id: t.id || `todo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                      content: t.content,
-                      status: t.status as 'pending' | 'in_progress' | 'completed' | 'cancelled',
-                      priority: t.priority as 'high' | 'medium' | 'low' | undefined,
-                    }));
-                  }
-                  
+                // Track completed todos for summary context + soft-stop.
+                if (typeof toolEvent.toolName === 'string' && /todowrite/i.test(toolEvent.toolName) && toolEvent.input) {
+                  const todoItems = parseTodoWriteInput(toolEvent.input);
                   if (todoItems.length > 0) {
-                    // Update the logger's todo list for the build panel
+                    latestTodos = todoItems;
                     logger.updateTodos(todoItems);
-                    
-                    // Get completed todos (excluding any "summarize" todos from old prompts)
+
                     const completed = todoItems
-                      .filter(t => t.status === 'completed' && !t.content.toLowerCase().includes('summarize'))
-                      .map(t => t.content);
-                    // Update our list with the latest completed todos
+                      .filter((t) => t.status === 'completed' && !t.content.toLowerCase().includes('summarize'))
+                      .map((t) => t.content);
                     completedTodos.length = 0;
                     completedTodos.push(...completed);
+
+                    if (shouldEarlyStopOnTodos(todoItems, { implemented: implementedViaTools })) {
+                      await requestEarlyStop(
+                        `all ${todoItems.length} todos completed after implementation`,
+                      );
+                    }
+                  }
+                }
+
+                if (isImplementationTool(toolEvent.toolName)) {
+                  implementedViaTools = true;
+                  if (shouldEarlyStopOnTodos(latestTodos, { implemented: true })) {
+                    await requestEarlyStop(
+                      `implementation landed and ${latestTodos.length} todos already complete`,
+                    );
                   }
                 }
               }
@@ -2971,6 +3110,10 @@ export async function startRunner(options: RunnerOptions = {}) {
               {
                 modifiedFileCount: filesModified.size,
                 completedTodoCount: completedTodos.length,
+                earlyStop: earlyStopTriggered,
+                earlyStopReason: earlyStopTriggered
+                  ? 'todos_completed_after_implementation'
+                  : undefined,
               },
             );
 

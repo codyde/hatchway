@@ -142,10 +142,11 @@ function buildFullPrompt(context: AgentStrategyContext, basePrompt: string): str
 CRITICAL: The template has already been prepared in ${context.workingDirectory}. Do not scaffold a new project.
 
 ## Speed Rules
-1. Emit one short TodoWrite plan (≤8 items), then implement immediately.
-2. Use WebSearch/WebFetch only for missing external docs/API details; do not explore alternative architectures.
-3. One dependency install after package.json changes; one build/typecheck; fix only real failures.
-4. Finish when the request is met and validation is clean — no extra polish turns.`;
+1. First tool call: TodoWrite with ≤8 concrete implementation todos, one in_progress.
+2. Implement with Write/Edit next — do not spend early turns only researching.
+3. Use WebSearch/WebFetch only for missing external docs/API details; max a couple lookups unless blocked.
+4. One dependency install after package.json changes; one build/typecheck; fix only real failures.
+5. Mark todos completed as you finish them. When all are completed and validation is clean, stop immediately — no extra polish turns.`;
 }
 
 const claudeStrategy: AgentStrategy = {
