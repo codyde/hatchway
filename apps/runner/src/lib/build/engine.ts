@@ -127,8 +127,25 @@ export async function createBuildStream(options: BuildStreamOptions): Promise<Re
           debugLog(`[runner] [build-engine] ✅ Generator exhausted after ${chunkCount} chunks, closing stream\n`);
           controller.close();
         } catch (error) {
-          debugLog(`[runner] [build-engine] ❌ Error consuming generator: ${error}\n`);
-          controller.error(error);
+          const err = error as { name?: string; message?: string; code?: string } | null;
+          const message = String(err?.message ?? error ?? '').toLowerCase();
+          const isAbort =
+            err?.name === 'AbortError' ||
+            err?.code === 'ABORT_ERR' ||
+            message.includes('abort');
+
+          if (isAbort) {
+            // Early-stop / cancel: close cleanly so the runner can complete success path.
+            debugLog(`[runner] [build-engine] ⏹️  Generator aborted after ${chunkCount} chunks, closing stream\n`);
+            try {
+              controller.close();
+            } catch {
+              // already closed
+            }
+          } else {
+            debugLog(`[runner] [build-engine] ❌ Error consuming generator: ${error}\n`);
+            controller.error(error);
+          }
         } finally {
           // Restore the original working directory
           process.chdir(originalCwd);
