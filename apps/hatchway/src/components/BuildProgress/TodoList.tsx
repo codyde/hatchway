@@ -9,8 +9,6 @@ interface TodoListProps {
   toolsByTodo: Record<number, ToolCall[]>;
   activeTodoIndex: number;
   allTodosCompleted: boolean;
-  onViewFiles?: () => void;
-  onStartServer?: () => void;
 }
 
 // Helper: Get the last non-TodoWrite tool for a todo
@@ -95,9 +93,6 @@ export function TodoList({
   todos,
   toolsByTodo,
   activeTodoIndex,
-  allTodosCompleted,
-  onViewFiles,
-  onStartServer,
 }: TodoListProps) {
   return (
     <div className="p-3">

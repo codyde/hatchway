@@ -15,8 +15,7 @@ interface BuildProgressProps {
   onClose?: () => void;
   onCancel?: () => void;
   isCancelling?: boolean;
-  onViewFiles?: () => void;
-  onStartServer?: () => void;
+
   templateInfo?: {
     name: string;
     framework: string;
@@ -94,8 +93,6 @@ export default function BuildProgress({
   onClose,
   onCancel,
   isCancelling = false,
-  onViewFiles,
-  onStartServer,
   templateInfo,
 }: BuildProgressProps) {
   // ALWAYS call hooks first (React rules!)
@@ -272,8 +269,6 @@ export default function BuildProgress({
                   toolsByTodo={state.toolsByTodo}
                   activeTodoIndex={state.activeTodoIndex}
                   allTodosCompleted={allTodosCompleted}
-                  onViewFiles={onViewFiles}
-                  onStartServer={onStartServer}
                 />
               )}
               

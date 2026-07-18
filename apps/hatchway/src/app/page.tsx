@@ -78,7 +78,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { OnboardingModal, LocalModeOnboarding } from "@/components/onboarding";
 import { LoginModal as LoginModalComponent } from "@/components/auth/LoginModal";
 import { Button } from "@/components/ui/button";
-import { Monitor, Code, Terminal, MousePointer2, RefreshCw, Copy, Check, Smartphone, Tablet, Cloud, Play, Square, ExternalLink, Loader2, User, AlertTriangle, X } from "lucide-react";
+import { Square, Loader2, User, AlertTriangle, X } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -258,7 +258,6 @@ function HomeContent() {
   const [isStoppingServer, setIsStoppingServer] = useState(false);
   const [devicePreset, setDevicePreset] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [chatPanelWidth, setChatPanelWidth] = useState(450);
-  const [activeTab, setActiveTab] = useState<'preview' | 'editor' | 'terminal'>('preview');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const generationStateRef = useRef<GenerationState | null>(generationState);
   const lastRefetchedBuildIdRef = useRef<string | null>(null);
@@ -3234,10 +3233,6 @@ function HomeContent() {
                                               toolsByTodo={generationState.toolsByTodo}
                                               activeTodoIndex={generationState.activeTodoIndex}
                                               allTodosCompleted={generationState.todos.every(t => t.status === 'completed')}
-                                              onViewFiles={() => {
-                                                window.dispatchEvent(new CustomEvent("switch-to-editor"));
-                                              }}
-                                              onStartServer={startDevServer}
                                             />
                                             
                                             {/* Active agent note - shows most recent reasoning */}
@@ -3402,8 +3397,6 @@ function HomeContent() {
                                               toolsByTodo={generationState.toolsByTodo}
                                               activeTodoIndex={generationState.activeTodoIndex}
                                               allTodosCompleted={generationState.todos.every((todo) => todo.status === 'completed')}
-                                              onViewFiles={() => window.dispatchEvent(new CustomEvent("switch-to-editor"))}
-                                              onStartServer={startDevServer}
                                             />
                                           ) : currentProject ? (
                                             <PlanningPhase
@@ -3539,16 +3532,8 @@ function HomeContent() {
                         isBuildActive={isCreatingProject || generationState?.isActive || false}
                         devicePreset={devicePreset}
                         onDevicePresetChange={setDevicePreset}
-                        activeTab={activeTab}
-                        onTabChange={setActiveTab}
                         isSelectionModeEnabled={isSelectionMode}
                         onSelectionModeChange={setIsSelectionMode}
-                        onPortDetected={(port) => {
-                          if (DEBUG_PAGE) console.log(
-                            "Terminal detected port update:",
-                            port
-                          );
-                        }}
                       />
                     </div>
                   </div>
