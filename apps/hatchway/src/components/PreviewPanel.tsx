@@ -190,7 +190,7 @@ export default function PreviewPanel({
 
   // Sandbox projects run entirely in a Railway sandbox and are ONLY reachable
   // via the railgate tunnel — there is no local dev server.
-  const isSandboxProject = (currentProject?.executionMode ?? 'local') === 'sandbox';
+  const isSandboxProject = (currentProject?.executionMode ?? 'sandbox') === 'sandbox';
 
   // Show preview when server is running and we can reach it:
   // local frontend, railgate preview URL, or WS proxy

@@ -52,7 +52,7 @@ export interface BuildRequest {
   messageParts?: MessagePart[]; // Multi-modal content (text, images, etc.)
   requestMessageId?: string; // User message that explicitly requested this build
   runnerId?: string; // Optional runner ID - falls back to RUNNER_DEFAULT_ID
-  executionMode?: 'local' | 'sandbox'; // Where the build runs (default 'local'); 'sandbox' provisions a Railway sandbox runner
+  executionMode?: 'local' | 'sandbox'; // Where the build runs (default 'sandbox'); 'local' uses a connected runner only
   buildId?: string;
   agent?: AgentId; // Selected coding agent provider (Claude Code, OpenAI Codex, etc.)
   claudeModel?: ClaudeModelId;

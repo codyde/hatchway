@@ -152,7 +152,7 @@ export const projects = pgTable('projects', {
   railwayDeploymentStatus: text('railway_deployment_status'), // 'deploying' | 'success' | 'failed' | 'crashed'
   railwayLastDeployedAt: timestamp('railway_last_deployed_at'), // Last successful deployment
   // Execution mode: where builds run for this project
-  executionMode: text('execution_mode').default('local'), // 'local' | 'sandbox'
+  executionMode: text('execution_mode').default('sandbox'), // 'sandbox' (default) | 'local'
   sandboxId: text('sandbox_id'), // Railway sandbox id when executionMode='sandbox' and currently running (warm)
   sandboxStatus: text('sandbox_status'), // 'provisioning' | 'running' | 'stopped' | 'failed'
   sandboxCheckpoint: text('sandbox_checkpoint'), // Railway checkpoint key for this project's saved workspace (restore point)

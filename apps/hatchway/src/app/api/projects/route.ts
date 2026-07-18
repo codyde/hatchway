@@ -171,6 +171,7 @@ export async function POST(request: Request) {
       originalPrompt: prompt,
       tags: tags || null, // Store tags if provided
       userId: userId, // Associate with authenticated user (null in local mode)
+      executionMode: 'sandbox',
     }).returning();
 
     console.log(`✅ Project created: ${project.id}`);

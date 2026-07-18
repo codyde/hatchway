@@ -673,11 +673,25 @@ function HomeContent() {
   } = useAgent();
   const { executionMode, setExecutionMode } = useExecutionMode();
 
-  // Seed the execution-mode selector from the opened project's saved mode (per-project persistence)
+  // Seed the selector from the opened project's locked mode without writing
+  // localStorage (opening a local project must not make Local the default for
+  // the next new project). On the landing page, restore the user preference /
+  // sandbox default.
   useEffect(() => {
     const mode = (currentProject as { executionMode?: string } | null | undefined)?.executionMode;
     if (mode === 'local' || mode === 'sandbox') {
-      setExecutionMode(mode);
+      setExecutionMode(mode, { persist: false });
+      return;
+    }
+    if (!currentProject) {
+      if (typeof window !== 'undefined') {
+        const stored = window.localStorage.getItem('hatchway.executionMode');
+        if (stored === 'local' || stored === 'sandbox') {
+          setExecutionMode(stored, { persist: false });
+          return;
+        }
+      }
+      setExecutionMode('sandbox', { persist: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProject?.id]);
@@ -1560,7 +1574,7 @@ function HomeContent() {
           requestMessageId,
           buildId: existingBuildId,
           runnerId: effectiveRunnerId,
-          executionMode, // 'local' (default) or 'sandbox' (provisions a Railway sandbox runner)
+          executionMode, // 'sandbox' (default) or 'local'
           agent: effectiveAgent,
           claudeModel: effectiveClaudeModel,
           codexThreadId: generationStateRef.current?.codex?.threadId, // For Codex thread resumption
@@ -2314,6 +2328,7 @@ function HomeContent() {
             runnerId: effectiveRunnerId,
             claudeModel: effectiveClaudeModel,
             tags: serializeTags(appliedTags),
+            executionMode,
           }),
         });
 

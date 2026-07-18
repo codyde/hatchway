@@ -72,7 +72,7 @@ export async function POST(
       // Sandbox previews each run on their own isolated host, so ports can never
       // collide — use a fixed port and skip allocation/conflict checks. Local
       // mode allocates a non-conflicting port on the host.
-      const isSandboxMode = ((proj.executionMode as string | null) ?? 'local') === 'sandbox';
+      const isSandboxMode = ((proj.executionMode as string | null) ?? 'sandbox') === 'sandbox';
       let portInfo: { port: number; framework: Parameters<typeof buildEnvForFramework>[0] };
       if (isSandboxMode) {
         portInfo = {
@@ -143,7 +143,7 @@ export async function POST(
           // Restart on the same path the project was built on. Without this the
           // runner defaults to 'local' and a sandbox project comes back on
           // localhost instead of re-syncing to its Railway sandbox.
-          executionMode: (proj.executionMode as 'local' | 'sandbox' | null) ?? 'local',
+          executionMode: (proj.executionMode as 'local' | 'sandbox' | null) ?? 'sandbox',
         },
       };
 

@@ -92,6 +92,7 @@ export async function POST(request: Request) {
         tags: tags || null,
         userId: userId,
         runnerId: runnerId || null,
+        executionMode: body.executionMode === 'local' ? 'local' : 'sandbox',
       }).returning();
 
       const initialContent = messageParts && messageParts.length > 0
