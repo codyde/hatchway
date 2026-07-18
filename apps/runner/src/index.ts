@@ -1679,7 +1679,7 @@ export async function startRunner(options: RunnerOptions = {}) {
             workingDirectory,
             env = {},
             preferredPort,
-            executionMode = 'local',
+            executionMode = 'sandbox',
           } = command.payload;
 
           // Sandbox mode: ship the locally-built workspace to the backend-managed

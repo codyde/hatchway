@@ -44,7 +44,7 @@ export function PreviewControls({
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const currentProject = projects.find(p => p.slug === selectedProject);
-  const isSandboxProject = (currentProject?.executionMode ?? 'local') === 'sandbox';
+  const isSandboxProject = (currentProject?.executionMode ?? 'sandbox') === 'sandbox';
   const previewUrl = verifiedTunnelUrl || currentProject?.tunnelUrl || (actualPort && !isSandboxProject ? `http://localhost:${actualPort}` : null);
 
   const handleCopyUrl = useCallback(() => {

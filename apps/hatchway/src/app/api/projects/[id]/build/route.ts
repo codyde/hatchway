@@ -128,7 +128,7 @@ export async function POST(
       });
     }
 
-    // EXECUTION MODE: 'local' (default) and 'sandbox' both build on the
+    // EXECUTION MODE: 'sandbox' (default) and 'local' both build on the
     // connected local runner (local Claude Code, user's subscription). In
     // 'sandbox' mode the runner then ships the built workspace to a
     // backend-managed Railway sandbox via POST /api/projects/[id]/sandbox/sync
@@ -136,10 +136,9 @@ export async function POST(
     // executionMode is chosen ONCE, on the initial build, and locked for the
     // life of the project. Follow-up builds (enhancement / focused-edit) must
     // NOT change it — the client's global execution-mode context can carry a
-    // stale/default 'local', and honoring it here would downgrade a sandbox
-    // project to local, breaking the post-build re-sync AND stop/restart
-    // (which then runs a local dev server and shows a localhost URL).
-    const persistedMode = (project.executionMode as 'local' | 'sandbox' | null) ?? 'local';
+    // stale value, and honoring it here would switch a locked project mode,
+    // breaking sandbox re-sync or local restart.
+    const persistedMode = (project.executionMode as 'local' | 'sandbox' | null) ?? 'sandbox';
     const executionMode = body.operationType === 'initial-build'
       ? (body.executionMode ?? persistedMode)
       : persistedMode;

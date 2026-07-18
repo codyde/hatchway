@@ -113,7 +113,7 @@ const TabbedPreview = forwardRef<HTMLDivElement, TabbedPreviewProps>(({
   const actualPort = currentProject?.devServerPort;
   // Sandbox projects are only reachable via the railgate tunnel — never fall
   // back to localhost for them (there is no local dev server).
-  const isSandboxProject = (currentProject?.executionMode ?? 'local') === 'sandbox';
+  const isSandboxProject = (currentProject?.executionMode ?? 'sandbox') === 'sandbox';
   const previewUrl = currentProject ? getProjectPreviewUrl(currentProject) : null;
   const isServerRunning = currentProject?.devServerStatus === 'running';
 

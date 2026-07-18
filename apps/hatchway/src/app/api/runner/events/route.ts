@@ -664,7 +664,7 @@ IMPORTANT:
               //   preview keeps serving the previous build.
               // ============================================================
               const serverAlreadyRunning = updated.devServerStatus === 'running';
-              const isSandboxMode = ((updated.executionMode as string | null) ?? 'local') === 'sandbox';
+              const isSandboxMode = ((updated.executionMode as string | null) ?? 'sandbox') === 'sandbox';
               if (updated.runCommand && updated.path && (!serverAlreadyRunning || isSandboxMode)) {
                 console.log(`[events] 🚀 ${serverAlreadyRunning ? 'Re-syncing sandbox' : 'Auto-starting dev server'} for completed build...`);
 
@@ -727,7 +727,7 @@ IMPORTANT:
                         workingDirectory: updated.path,
                         env: portEnv,
                         preferredPort: port,
-                        executionMode: (updated.executionMode as 'local' | 'sandbox' | null) ?? 'local',
+                        executionMode: (updated.executionMode as 'local' | 'sandbox' | null) ?? 'sandbox',
                       },
                     };
 

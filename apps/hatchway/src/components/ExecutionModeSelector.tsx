@@ -12,8 +12,8 @@ interface ExecutionModeSelectorProps {
 }
 
 const OPTIONS: { value: ExecutionMode; label: string; icon: typeof Monitor; title: string }[] = [
-  { value: 'local', label: 'Local', icon: Monitor, title: 'Run the build on a connected runner' },
   { value: 'sandbox', label: 'Sandbox', icon: Boxes, title: 'Run the build in an ephemeral Railway sandbox' },
+  { value: 'local', label: 'Local', icon: Monitor, title: 'Run the build on a connected runner' },
 ];
 
 export function ExecutionModeSelector({ onChange, disabled, className }: ExecutionModeSelectorProps) {
@@ -21,7 +21,7 @@ export function ExecutionModeSelector({ onChange, disabled, className }: Executi
 
   const select = (mode: ExecutionMode) => {
     if (disabled || mode === executionMode) return;
-    setExecutionMode(mode);
+    setExecutionMode(mode, { persist: true });
     onChange?.(mode);
   };
 
