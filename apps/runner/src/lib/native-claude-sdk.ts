@@ -221,17 +221,32 @@ export function resolveClaudeMaxTurns(operationType?: string): number {
   }
 }
 
-/** Core coding tools only — blocks TodoWrite/Task/MCP/web that burn turns. */
-const CLAUDE_BUILD_TOOLS = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'] as const;
+/**
+ * Build tool surface:
+ * - coding tools for implementation
+ * - TodoWrite for native build progress tracking
+ * - WebSearch/WebFetch for docs/context lookup
+ *
+ * Task stays disallowed: it spawns nested agent loops and is not used for
+ * Hatchway progress tracking (TodoWrite is).
+ */
+const CLAUDE_BUILD_TOOLS = [
+  'Bash',
+  'Read',
+  'Write',
+  'Edit',
+  'Glob',
+  'Grep',
+  'TodoWrite',
+  'WebSearch',
+  'WebFetch',
+] as const;
 
 const CLAUDE_DISALLOWED_TOOLS = [
-  'TodoWrite',
   'Task',
   'ExitPlanMode',
   'AskUserQuestion',
   'Skill',
-  'WebSearch',
-  'WebFetch',
   'NotebookEdit',
 ] as const;
 
@@ -324,8 +339,7 @@ export function createNativeClaudeQuery(
         // Enable SDK debug logging only when explicitly diagnosing the SDK.
         ...(process.env.DEBUG_SKILLS === '1' ? { DEBUG_CLAUDE_AGENT_SDK: '1' } : {}),
       },
-      // Restrict to coding tools only. Progress uses inline TODO_WRITE text;
-      // TodoWrite/Task/MCP/web tools only add expensive turns.
+      // Coding + TodoWrite progress + web research. Task/MCP/plan tools stay off.
       tools: [...CLAUDE_BUILD_TOOLS],
       disallowedTools: [...CLAUDE_DISALLOWED_TOOLS],
       // Pass abort controller for cancellation support

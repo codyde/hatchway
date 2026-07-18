@@ -142,8 +142,8 @@ function buildFullPrompt(context: AgentStrategyContext, basePrompt: string): str
 CRITICAL: The template has already been prepared in ${context.workingDirectory}. Do not scaffold a new project.
 
 ## Speed Rules
-1. Emit one short TODO_WRITE plan (≤8 items), then implement immediately.
-2. Do not fetch external docs, browse the web, or explore alternative architectures.
+1. Emit one short TodoWrite plan (≤8 items), then implement immediately.
+2. Use WebSearch/WebFetch only for missing external docs/API details; do not explore alternative architectures.
 3. One dependency install after package.json changes; one build/typecheck; fix only real failures.
 4. Finish when the request is met and validation is clean — no extra polish turns.`;
 }

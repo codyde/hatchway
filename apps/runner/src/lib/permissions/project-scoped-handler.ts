@@ -29,14 +29,12 @@ type CanUseToolFn = (
  * @param projectDirectory Absolute path to the project directory (e.g., /Users/codydearkland/hatchway-workspace/codyscoolnewapp)
  * @returns Permission handler function for use with Claude Agent SDK
  */
+// Nested agents / plan-mode / skills burn turns. TodoWrite + web stay allowed.
 const LATENCY_BLOCKED_TOOLS = new Set([
-  'TodoWrite',
   'Task',
   'ExitPlanMode',
   'AskUserQuestion',
   'Skill',
-  'WebSearch',
-  'WebFetch',
   'NotebookEdit',
 ]);
 
@@ -44,14 +42,14 @@ export function createProjectScopedPermissionHandler(projectDirectory: string): 
   const normalizedProjectDir = resolve(projectDirectory);
 
   return async (toolName, input, { signal, suggestions }) => {
-    // Block high-latency / non-coding tools even if the SDK exposes them.
+    // Block nested-agent / plan tools and personal MCP even if the SDK exposes them.
     if (LATENCY_BLOCKED_TOOLS.has(toolName) || toolName.startsWith('mcp__')) {
       console.warn(`[permissions] DENIED ${toolName} - not allowed during Hatchway builds`);
       return {
         behavior: 'deny',
         message:
           `Tool "${toolName}" is disabled for Hatchway builds. ` +
-          'Use Bash/Read/Write/Edit/Glob/Grep only, and emit TODO_WRITE text markers for progress.',
+          'Use Bash/Read/Write/Edit/Glob/Grep, TodoWrite for progress, and WebSearch/WebFetch for docs.',
         interrupt: false,
       };
     }
