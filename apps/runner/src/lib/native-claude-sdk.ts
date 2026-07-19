@@ -143,6 +143,7 @@ function transformSDKMessage(sdkMessage: SDKMessage): TransformedMessage | null 
         duration_ms?: number;
         duration_api_ms?: number;
         total_cost_usd?: number;
+        errors?: string[];
         usage?: {
           input_tokens?: number;
           output_tokens?: number;
@@ -151,9 +152,14 @@ function transformSDKMessage(sdkMessage: SDKMessage): TransformedMessage | null 
         };
       };
 
+      const errorText =
+        sdkMessage.subtype !== 'success' && Array.isArray(resultMessage.errors) && resultMessage.errors.length > 0
+          ? resultMessage.errors.join('; ')
+          : undefined;
+
       return {
         type: 'result',
-        result: sdkMessage.subtype === 'success' ? sdkMessage.result : undefined,
+        result: sdkMessage.subtype === 'success' ? sdkMessage.result : errorText,
         usage: sdkMessage.usage,
         subtype: sdkMessage.subtype,
         session_id: sdkMessage.session_id,
@@ -217,7 +223,9 @@ export function resolveClaudeMaxTurns(operationType?: string): number {
       return 30;
     case 'initial-build':
     default:
-      return 40;
+      // Large multi-page docs/sites often need more than 40 turns.
+      // Soft-complete still kicks in if the budget is exhausted with work landed.
+      return 60;
   }
 }
 
@@ -498,6 +506,18 @@ export function createNativeClaudeQuery(
 
       if (isAbort) {
         debugLog(`[runner] [native-sdk] ⏹️  Query aborted after ${messageCount} messages (treating as clean stop)\n`);
+        return;
+      }
+
+      // Max-turns is emitted as a result message first, then the SDK throws on
+      // process exit. Swallow the throw so the runner can soft-complete from the
+      // result subtype / landed-work heuristics instead of hard-failing.
+      const isMaxTurns =
+        message.includes('maximum number of turns') ||
+        message.includes('error_max_turns') ||
+        (message.includes('error result') && message.includes('turns'));
+      if (isMaxTurns) {
+        debugLog(`[runner] [native-sdk] ⏹️  Max turns reached after ${messageCount} messages (treating as clean stop)\n`);
         return;
       }
 
