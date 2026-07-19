@@ -1834,10 +1834,35 @@ function HomeContent() {
                   return prev;
                 }
 
+                let activityFeed = baseState.activityFeed || [];
+                const activeTodo = activeIndex >= 0 ? todos[activeIndex] : undefined;
+                if (activeTodo) {
+                  const label =
+                    (activeTodo.status === "in_progress"
+                      ? activeTodo.activeForm || activeTodo.content
+                      : activeTodo.content) || activeTodo.content;
+                  if (label?.trim()) {
+                    const item: ActivityItem = {
+                      id: `text-todo-sse-${activeIndex}-${label.slice(0, 48)}`,
+                      kind: "text",
+                      timestamp: new Date(),
+                      label,
+                      status: "info",
+                      todoIndex: activeIndex,
+                    };
+                    const feedIdx = activityFeed.findIndex((entry) => entry.id === item.id);
+                    activityFeed = [...activityFeed];
+                    if (feedIdx >= 0) activityFeed[feedIdx] = { ...activityFeed[feedIdx], ...item, timestamp: activityFeed[feedIdx].timestamp };
+                    else activityFeed.push(item);
+                    activityFeed = activityFeed.slice(-200);
+                  }
+                }
+
                 const updated = {
                   ...baseState,
                   todos,
                   activeTodoIndex: activeIndex,
+                  activityFeed,
                 };
 
                 if (DEBUG_PAGE) console.log("   Active index set to:", activeIndex);
@@ -1879,41 +1904,18 @@ function HomeContent() {
                   startTime: new Date(),
                 };
 
-                const resource =
-                  typeof (data.input as { file_path?: string } | undefined)?.file_path === 'string'
-                    ? (data.input as { file_path: string }).file_path
-                    : typeof (data.input as { command?: string } | undefined)?.command === 'string'
-                      ? (data.input as { command: string }).command.slice(0, 80)
-                      : undefined;
-
-                const activityItem: ActivityItem = {
-                  id: `tool-${tool.id}`,
-                  kind: 'tool',
-                  timestamp: new Date(),
-                  label: tool.name,
-                  detail: resource,
-                  status: 'running',
-                  toolName: tool.name,
-                  toolId: tool.id,
-                };
-
-                // Before TodoWrite: keep tools on planningTools + activity feed
+                // Tools stay in toolsByTodo/planningTools for task view; chat
+                // feed is narrative-only and must not include tool rows.
                 if (!baseState.todos || baseState.todos.length === 0) {
                   const planningTools = [...(baseState.planningTools || [])];
                   const existingIdx = planningTools.findIndex((t) => t.id === tool.id);
                   if (existingIdx >= 0) planningTools[existingIdx] = tool;
                   else planningTools.push(tool);
 
-                  const feed = [...(baseState.activityFeed || [])];
-                  const feedIdx = feed.findIndex((item) => item.id === activityItem.id);
-                  if (feedIdx >= 0) feed[feedIdx] = { ...feed[feedIdx], ...activityItem };
-                  else feed.push(activityItem);
-
                   return {
                     ...baseState,
                     planningTools,
                     activePlanningTool: tool,
-                    activityFeed: feed.slice(-200),
                   };
                 }
 
@@ -1922,10 +1924,6 @@ function HomeContent() {
                     ? baseState.activeTodoIndex
                     : 0;
                 const existing = baseState.toolsByTodo[activeIndex] || [];
-                const feed = [...(baseState.activityFeed || [])];
-                const feedIdx = feed.findIndex((item) => item.id === activityItem.id);
-                if (feedIdx >= 0) feed[feedIdx] = { ...feed[feedIdx], ...activityItem, todoIndex: activeIndex };
-                else feed.push({ ...activityItem, todoIndex: activeIndex });
 
                 if (DEBUG_PAGE) console.log(
                   "   ✅ Nesting under todo",
@@ -1940,7 +1938,6 @@ function HomeContent() {
                     ...baseState.toolsByTodo,
                     [activeIndex]: [...existing.filter((t) => t.id !== tool.id), tool],
                   },
-                  activityFeed: feed.slice(-200),
                 };
 
                 if (DEBUG_PAGE) console.log(
@@ -3376,33 +3373,20 @@ function HomeContent() {
                                               </div>
                                             )}
 
-                                            {/* Activity feed fallback for completed builds (no todos) */}
+                                            {/* Chat feed fallback for completed builds (narrative only) */}
                                             {(!correspondingBuild.todos || correspondingBuild.todos.length === 0) &&
-                                              ((correspondingBuild.activityFeed && correspondingBuild.activityFeed.length > 0) ||
-                                                (correspondingBuild.planningTools && correspondingBuild.planningTools.length > 0)) && (
+                                              correspondingBuild.activityFeed &&
+                                              correspondingBuild.activityFeed.some(
+                                                (item) => item.kind === 'text' || item.kind === 'status'
+                                              ) && (
                                               <div className="space-y-2 rounded-xl theme-card overflow-hidden">
                                                 <p className="px-4 pt-3 text-xs uppercase tracking-[0.3em] text-gray-500">
-                                                  Activity
+                                                  Chat
                                                 </p>
                                                 <ActivityFeed
-                                                  items={
-                                                    correspondingBuild.activityFeed && correspondingBuild.activityFeed.length > 0
-                                                      ? correspondingBuild.activityFeed
-                                                      : (correspondingBuild.planningTools || []).map((tool) => ({
-                                                          id: `tool-${tool.id}`,
-                                                          kind: 'tool' as const,
-                                                          timestamp: tool.startTime || correspondingBuild.startTime,
-                                                          label: tool.name,
-                                                          status:
-                                                            tool.state === 'error'
-                                                              ? ('error' as const)
-                                                              : tool.state === 'output-available'
-                                                                ? ('completed' as const)
-                                                                : ('running' as const),
-                                                          toolName: tool.name,
-                                                          toolId: tool.id,
-                                                        }))
-                                                  }
+                                                  items={correspondingBuild.activityFeed.filter(
+                                                    (item) => item.kind === 'text' || item.kind === 'status'
+                                                  )}
                                                   isActive={false}
                                                 />
                                               </div>

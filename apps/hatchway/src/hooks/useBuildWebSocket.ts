@@ -418,15 +418,22 @@ export function useBuildWebSocket({
               mappedTodos[todosData.activeTodoIndex] ||
               mappedTodos.find((t) => t.status === 'in_progress');
             if (activeTodo) {
-              newState.activityFeed = upsertActivityItem(newState.activityFeed, {
-                id: `todo-${todosData.phase || 'build'}-${todosData.activeTodoIndex}-${activeTodo.content.slice(0, 40)}`,
-                kind: 'todo',
-                timestamp: new Date(),
-                label: activeTodo.status === 'in_progress' ? activeTodo.activeForm : activeTodo.content,
-                detail: todosData.phase === 'template' ? 'template' : 'build',
-                status: activeTodo.status === 'completed' ? 'completed' : 'running',
-                todoIndex: todosData.activeTodoIndex,
-              });
+              // Surface the active task form as a Claude status line (chat is
+              // narrative-only; tools never appear in the feed).
+              const label =
+                (activeTodo.status === 'in_progress'
+                  ? activeTodo.activeForm || activeTodo.content
+                  : activeTodo.content) || activeTodo.content;
+              if (label?.trim()) {
+                newState.activityFeed = upsertActivityItem(newState.activityFeed, {
+                  id: `text-todo-${todosData.phase || 'build'}-${todosData.activeTodoIndex}-${label.slice(0, 48)}`,
+                  kind: 'text',
+                  timestamp: new Date(),
+                  label,
+                  status: 'info',
+                  todoIndex: todosData.activeTodoIndex,
+                });
+              }
             }
             break;
 
@@ -588,25 +595,8 @@ export function useBuildWebSocket({
               }
             }
 
-            if (toolData.name !== 'TodoWrite') {
-              const activityStatus =
-                toolData.state === 'error'
-                  ? 'error'
-                  : toolData.state === 'output-available'
-                    ? 'completed'
-                    : 'running';
-              newState.activityFeed = upsertActivityItem(newState.activityFeed, {
-                id: `tool-${toolData.id}`,
-                kind: 'tool',
-                timestamp: new Date(update.timestamp || Date.now()),
-                label: toolData.name,
-                detail: getToolResourceLabel(toolCall),
-                status: activityStatus,
-                toolName: toolData.name,
-                toolId: toolData.id,
-                todoIndex: toolData.todoIndex,
-              });
-            }
+            // Intentionally do NOT push tools into activityFeed — chat is
+            // narrative-only (Claude text + status). Tools remain in toolsByTodo.
             break;
         }
       }

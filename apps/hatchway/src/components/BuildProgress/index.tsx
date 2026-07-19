@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, CheckCircle2, ChevronDown, ChevronUp, Square, AlertTriangle } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import type { GenerationState, TodoItem, ActivityItem, ToolCall } from '@/types/generation';
+import type { GenerationState, TodoItem, ActivityItem } from '@/types/generation';
 import { BuildHeader } from './BuildHeader';
 import { TodoList } from './TodoList';
 import { PlanningPhase } from './PlanningPhase';
@@ -24,57 +24,15 @@ interface BuildProgressProps {
   } | null;
 }
 
-function getToolResource(tool: ToolCall): string {
-  if (!tool.input) return '';
-  const input = tool.input as Record<string, unknown>;
-  if (typeof input.skillName === 'string') return input.skillName;
-  if (typeof input.file_path === 'string') {
-    const path = input.file_path;
-    const match = path.match(/hatchway-workspace\/[^/]+\/(.+)$/);
-    return match ? match[1] : path.split('/').slice(-2).join('/');
-  }
-  if (typeof input.path === 'string') {
-    const path = input.path;
-    const match = path.match(/hatchway-workspace\/[^/]+\/(.+)$/);
-    return match ? match[1] : path.split('/').slice(-2).join('/');
-  }
-  if (typeof input.command === 'string') {
-    return input.command.length > 80 ? `${input.command.slice(0, 80)}…` : input.command;
-  }
-  if (typeof input.query === 'string') {
-    return input.query.length > 80 ? `${input.query.slice(0, 80)}…` : input.query;
-  }
-  if (typeof input.pattern === 'string') return input.pattern;
-  return '';
-}
-
-/** Reconstruct a chronological feed when live activityFeed is empty (reconnect / history). */
+/** Reconstruct a chronological chat feed when live activityFeed is empty (reconnect / history).
+ * Chat is narrative-only: Claude text + high-level status. Tools never appear here.
+ */
 function deriveActivityFeed(state: GenerationState): ActivityItem[] {
   if (state.activityFeed && state.activityFeed.length > 0) {
-    return state.activityFeed;
+    return state.activityFeed.filter((item) => item.kind === 'text' || item.kind === 'status');
   }
 
   const items: ActivityItem[] = [];
-
-  for (const tool of state.planningTools || []) {
-    if (tool.name === 'TodoWrite') continue;
-    items.push({
-      id: `tool-${tool.id}`,
-      kind: 'tool',
-      timestamp: tool.startTime || state.startTime,
-      label: tool.name,
-      detail: getToolResource(tool),
-      status:
-        tool.state === 'error'
-          ? 'error'
-          : tool.state === 'output-available'
-            ? 'completed'
-            : 'running',
-      toolName: tool.name,
-      toolId: tool.id,
-      todoIndex: -1,
-    });
-  }
 
   // Narrative text keyed by todo index (including 0 before todos exist)
   const textEntries = Object.entries(state.textByTodo || {})
@@ -94,44 +52,30 @@ function deriveActivityFeed(state: GenerationState): ActivityItem[] {
     });
   }
 
-  (state.todos || []).forEach((todo, index) => {
-    if (todo.status === 'pending') return;
-    items.push({
-      id: `todo-derived-${index}`,
-      kind: 'todo',
-      timestamp: state.startTime,
-      label: todo.status === 'in_progress' ? todo.activeForm : todo.content,
-      status: todo.status === 'completed' ? 'completed' : 'running',
-      todoIndex: index,
-    });
-
-    for (const tool of state.toolsByTodo?.[index] || []) {
-      if (tool.name === 'TodoWrite') continue;
+  // Surface the active todo form as a lightweight Claude status line when we
+  // have no narrative yet (Claude Code often works silently via tools).
+  const activeIdx = state.activeTodoIndex ?? -1;
+  const activeTodo = activeIdx >= 0 ? state.todos?.[activeIdx] : undefined;
+  if (activeTodo && (activeTodo.status === 'in_progress' || activeTodo.status === 'completed')) {
+    const label = (activeTodo.status === 'in_progress' ? activeTodo.activeForm : activeTodo.content) || activeTodo.content;
+    if (label?.trim()) {
       items.push({
-        id: `tool-${tool.id}`,
-        kind: 'tool',
-        timestamp: tool.startTime || state.startTime,
-        label: tool.name,
-        detail: getToolResource(tool),
-        status:
-          tool.state === 'error'
-            ? 'error'
-            : tool.state === 'output-available'
-              ? 'completed'
-              : 'running',
-        toolName: tool.name,
-        toolId: tool.id,
-        todoIndex: index,
+        id: `text-todo-status-${activeIdx}-${label.slice(0, 40)}`,
+        kind: 'text',
+        timestamp: state.startTime,
+        label,
+        status: 'info',
+        todoIndex: activeIdx,
       });
     }
-  });
+  }
 
   if (state.buildSummary) {
     items.push({
       id: 'text-summary-derived',
       kind: 'text',
       timestamp: state.endTime || new Date(),
-      label: state.buildSummary.slice(0, 200),
+      label: state.buildSummary.slice(0, 400),
       status: 'info',
     });
   }
