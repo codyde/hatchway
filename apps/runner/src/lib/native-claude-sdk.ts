@@ -210,35 +210,32 @@ function buildPromptWithImages(prompt: string, messageParts?: MessagePart[]): st
  * Operation-aware turn budgets. Production builds were spending most wall time
  * in model turns (not tools); caps prevent long exploratory loops while still
  * leaving headroom for real multi-file work.
+ *
+ * Initial builds are intentionally tighter: runner-side write-budget early-stop
+ * and one-shot verify prompts should finish most apps well under this ceiling.
  */
 export function resolveClaudeMaxTurns(operationType?: string): number {
   switch (operationType) {
     case 'autofix':
-      return 20;
+      return 18;
     case 'focused-edit':
-      return 15;
+      return 12;
     case 'enhancement':
-      return 35;
+      return 28;
     case 'continuation':
-      return 30;
+      return 24;
     case 'initial-build':
     default:
-      // Large multi-page docs/sites often need more than 40 turns.
-      // Soft-complete still kicks in if the budget is exhausted with work landed.
-      return 60;
+      return 32;
   }
 }
 
 /**
- * Build tool surface:
- * - coding tools for implementation
- * - TodoWrite for native build progress tracking
- * - WebSearch/WebFetch for docs/context lookup
- *
- * Task stays disallowed: it spawns nested agent loops and is not used for
- * Hatchway progress tracking (TodoWrite is).
+ * Core coding tools always available during builds.
+ * Web tools are optional and disabled on initial-build (local template +
+ * manifest should be enough; web lookups add slow multi-second turns).
  */
-const CLAUDE_BUILD_TOOLS = [
+const CLAUDE_CORE_BUILD_TOOLS = [
   'Bash',
   'Read',
   'Write',
@@ -246,6 +243,9 @@ const CLAUDE_BUILD_TOOLS = [
   'Glob',
   'Grep',
   'TodoWrite',
+] as const;
+
+const CLAUDE_WEB_TOOLS = [
   'WebSearch',
   'WebFetch',
 ] as const;
@@ -257,6 +257,23 @@ const CLAUDE_DISALLOWED_TOOLS = [
   'Skill',
   'NotebookEdit',
 ] as const;
+
+export function resolveClaudeBuildTools(operationType?: string): string[] {
+  // Initial builds should stay on-template. Web is useful for later edits
+  // when the user asks about external APIs/docs.
+  if (!operationType || operationType === 'initial-build') {
+    return [...CLAUDE_CORE_BUILD_TOOLS];
+  }
+  return [...CLAUDE_CORE_BUILD_TOOLS, ...CLAUDE_WEB_TOOLS];
+}
+
+export function resolveClaudeDisallowedTools(operationType?: string): string[] {
+  const denied: string[] = [...CLAUDE_DISALLOWED_TOOLS];
+  if (!operationType || operationType === 'initial-build') {
+    denied.push(...CLAUDE_WEB_TOOLS);
+  }
+  return denied;
+}
 
 export interface NativeClaudeQueryOptions {
   maxTurns?: number;
@@ -279,6 +296,8 @@ export function createNativeClaudeQuery(
 ) {
   const resolvedMaxTurns =
     queryOptions.maxTurns ?? resolveClaudeMaxTurns(queryOptions.operationType);
+  const resolvedTools = resolveClaudeBuildTools(queryOptions.operationType);
+  const resolvedDisallowedTools = resolveClaudeDisallowedTools(queryOptions.operationType);
 
   return async function* nativeClaudeQuery(
     prompt: string,
@@ -293,6 +312,7 @@ export function createNativeClaudeQuery(
     debugLog(`[runner] [native-sdk] Working dir: ${workingDirectory}\n`);
     debugLog(`[runner] [native-sdk] Prompt length: ${prompt.length}\n`);
     debugLog(`[runner] [native-sdk] maxTurns: ${resolvedMaxTurns} (op=${queryOptions.operationType ?? 'default'})\n`);
+    debugLog(`[runner] [native-sdk] tools: ${resolvedTools.join(',')}\n`);
 
     // Build combined system prompt
     const systemPromptSegments: string[] = [CLAUDE_SYSTEM_PROMPT.trim()];
@@ -347,9 +367,10 @@ export function createNativeClaudeQuery(
         // Enable SDK debug logging only when explicitly diagnosing the SDK.
         ...(process.env.DEBUG_SKILLS === '1' ? { DEBUG_CLAUDE_AGENT_SDK: '1' } : {}),
       },
-      // Coding + TodoWrite progress + web research. Task/MCP/plan tools stay off.
-      tools: [...CLAUDE_BUILD_TOOLS],
-      disallowedTools: [...CLAUDE_DISALLOWED_TOOLS],
+      // Coding + TodoWrite progress. Web tools only outside initial-build.
+      // Task/MCP/plan tools stay off.
+      tools: resolvedTools,
+      disallowedTools: resolvedDisallowedTools,
       // Pass abort controller for cancellation support
       // NOTE: There is a known bug in the Claude Agent SDK where AbortController
       // signals are not fully respected. When abort() is called, the SDK may
