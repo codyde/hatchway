@@ -1,6 +1,6 @@
 {
   "name": "@hatchway/agent-core",
-  "version": "0.51.37",
+  "version": "0.51.38",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
