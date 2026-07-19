@@ -22,10 +22,8 @@ export function tarWorkspaceBase64(dir: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
-    const args = [
+    const baseArgs = [
       '-czf', '-',
-      // Prefer portable archives: no macOS resource forks / xattrs when supported.
-      '--no-xattrs',
       '--exclude=node_modules',
       '--exclude=.git',
       '--exclude=.next',
@@ -37,15 +35,31 @@ export function tarWorkspaceBase64(dir: string): Promise<string> {
       '.',
     ];
 
-    const trySpawn = (tarArgs: string[], env: NodeJS.ProcessEnv) => {
-      const tar = spawn('tar', tarArgs, {
-        env: {
-          ...env,
-          // macOS: stop packing ._ resource forks / copyfile xattrs into ustar headers.
-          COPYFILE_DISABLE: '1',
-          TAR_OPTIONS: [env.TAR_OPTIONS, '--no-xattrs'].filter(Boolean).join(' ').trim() || undefined,
-        },
-      });
+    const buildEnv = (withNoXattrs: boolean): NodeJS.ProcessEnv => {
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        // macOS: stop packing ._ resource forks / copyfile xattrs into ustar headers.
+        COPYFILE_DISABLE: '1',
+      };
+      // Only inject --no-xattrs into TAR_OPTIONS when we also pass it on argv.
+      // Retry path must omit both, or older/busybox tar keeps failing the same way.
+      if (withNoXattrs) {
+        env.TAR_OPTIONS = [process.env.TAR_OPTIONS, '--no-xattrs'].filter(Boolean).join(' ').trim();
+      } else if (process.env.TAR_OPTIONS) {
+        env.TAR_OPTIONS = process.env.TAR_OPTIONS
+          .split(/\s+/)
+          .filter((part) => part && part !== '--no-xattrs')
+          .join(' ')
+          .trim() || undefined;
+      } else {
+        delete env.TAR_OPTIONS;
+      }
+      return env;
+    };
+
+    const trySpawn = (withNoXattrs: boolean) => {
+      const tarArgs = withNoXattrs ? ['--no-xattrs', ...baseArgs] : baseArgs;
+      const tar = spawn('tar', tarArgs, { env: buildEnv(withNoXattrs) });
       tar.stdout.on('data', (c: Buffer) => chunks.push(c));
       tar.stderr.on('data', (c: Buffer) => errChunks.push(c));
       tar.on('error', reject);
@@ -56,17 +70,17 @@ export function tarWorkspaceBase64(dir: string): Promise<string> {
         }
         const errText = Buffer.concat(errChunks).toString();
         // Older/busybox tar may not support --no-xattrs; retry without it but keep COPYFILE_DISABLE.
-        if (tarArgs.includes('--no-xattrs') && /unrecognized|invalid option|not supported|unknown option/i.test(errText)) {
+        if (withNoXattrs && /unrecognized|invalid option|not supported|unknown option/i.test(errText)) {
           chunks.length = 0;
           errChunks.length = 0;
-          trySpawn(tarArgs.filter((a) => a !== '--no-xattrs'), env);
+          trySpawn(false);
           return;
         }
         reject(new Error(`tar exited ${code}: ${errText.slice(0, 300)}`));
       });
     };
 
-    trySpawn(args, process.env);
+    trySpawn(true);
   });
 }
 

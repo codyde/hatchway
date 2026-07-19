@@ -135,6 +135,8 @@ class BuildWebSocketServer {
   private clients: Map<string, ClientSubscription> = new Map();
   private runnerConnections: Map<string, RunnerConnection> = new Map();
   private pendingUpdates: Map<string, BatchedUpdate> = new Map();
+  /** Recent activity-status updates retained briefly when no client is subscribed. */
+  private activityStatusBuffer: Map<string, BatchedUpdate['updates']> = new Map();
   private batchInterval: NodeJS.Timeout | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private runnerCleanupInterval: NodeJS.Timeout | null = null;
@@ -144,6 +146,8 @@ class BuildWebSocketServer {
   private readonly CLIENT_TIMEOUT = 60000; // 60s
   private readonly RUNNER_PING_INTERVAL = 30000; // 30s
   private readonly RUNNER_HEARTBEAT_TIMEOUT = 90000; // 90s
+  private readonly ACTIVITY_BUFFER_TTL_MS = 10 * 60 * 1000; // 10 minutes
+  private readonly ACTIVITY_BUFFER_MAX = 50;
 
   // Metrics tracking for runner connections
   private runnerTotalEvents = 0;
@@ -1226,6 +1230,55 @@ class BuildWebSocketServer {
   }
 
   /**
+   * Retain activity-status updates briefly so reconnecting clients still see
+   * preview/status failures that landed while they were offline.
+   */
+  private bufferActivityUpdates(projectId: string, updates: BatchedUpdate['updates']) {
+    const activityUpdates = updates.filter((u) => u.type === 'activity-status');
+    if (activityUpdates.length === 0) return;
+
+    const now = Date.now();
+    const existing = (this.activityStatusBuffer.get(projectId) || []).filter(
+      (u) => now - (u.timestamp || 0) < this.ACTIVITY_BUFFER_TTL_MS
+    );
+    const merged = [...existing, ...activityUpdates];
+    this.activityStatusBuffer.set(
+      projectId,
+      merged.length > this.ACTIVITY_BUFFER_MAX
+        ? merged.slice(merged.length - this.ACTIVITY_BUFFER_MAX)
+        : merged
+    );
+  }
+
+  private getBufferedActivityUpdates(projectId: string): BatchedUpdate['updates'] {
+    const now = Date.now();
+    const buffered = (this.activityStatusBuffer.get(projectId) || []).filter(
+      (u) => now - (u.timestamp || 0) < this.ACTIVITY_BUFFER_TTL_MS
+    );
+    // Keep entries for other reconnecting clients until TTL expires.
+    if (buffered.length === 0) {
+      this.activityStatusBuffer.delete(projectId);
+    } else {
+      this.activityStatusBuffer.set(projectId, buffered);
+    }
+    return buffered;
+  }
+
+  private latestPreviewErrorFromActivity(
+    updates: BatchedUpdate['updates']
+  ): string | undefined {
+    for (let i = updates.length - 1; i >= 0; i--) {
+      const update = updates[i];
+      if (update.type !== 'activity-status') continue;
+      const data = update.data as { message?: string; level?: string } | undefined;
+      if (data?.level === 'error' && typeof data.message === 'string' && /preview failed/i.test(data.message)) {
+        return data.message;
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Flush a specific batch to clients
    */
   private flushBatch(key: string) {
@@ -1233,6 +1286,9 @@ class BuildWebSocketServer {
     if (!batch || batch.updates.length === 0) return;
 
     const { projectId, sessionId, updates } = batch;
+
+    // Always buffer activity-status (incl. preview-failed) so reconnects can recover it.
+    this.bufferActivityUpdates(projectId, updates);
 
     // Find all clients subscribed to this project/session.
     // Empty sessionId = project-wide broadcast (status / preview-failed).
@@ -1242,7 +1298,7 @@ class BuildWebSocketServer {
     );
 
     if (subscribers.length === 0) {
-      // No subscribers, clear batch
+      // No live subscribers; activity already buffered above.
       this.pendingUpdates.delete(key);
       return;
     }
@@ -1285,6 +1341,91 @@ class BuildWebSocketServer {
   }
 
   /**
+   * Enrich recovered generation state with buffered activity + project preview errors
+   * so clients that missed live broadcasts still see the correct status.
+   */
+  private async enrichRecoveredState(
+    projectId: string,
+    state: Record<string, unknown> | null | undefined
+  ): Promise<Record<string, unknown> | null> {
+    if (!state) return null;
+
+    const next: Record<string, unknown> = { ...state };
+    const buffered = this.getBufferedActivityUpdates(projectId);
+
+    if (buffered.length > 0) {
+      const existingFeed = Array.isArray(next.activityFeed)
+        ? ([...next.activityFeed] as Array<Record<string, unknown>>)
+        : [];
+      for (const update of buffered) {
+        const data = (update.data || {}) as {
+          message?: string;
+          phase?: string;
+          level?: string;
+        };
+        const id = `status-${data.phase || 'general'}-${update.timestamp || Date.now()}`;
+        if (existingFeed.some((item) => item.id === id)) continue;
+        existingFeed.push({
+          id,
+          kind: 'status',
+          timestamp: new Date(update.timestamp || Date.now()),
+          label: data.message || 'Status update',
+          detail: data.phase,
+          status: data.level || 'info',
+        });
+      }
+      next.activityFeed = existingFeed;
+
+      const bufferedPreviewError = this.latestPreviewErrorFromActivity(buffered);
+      if (bufferedPreviewError && !next.previewError) {
+        next.previewError = bufferedPreviewError;
+      }
+    }
+
+    if (!next.previewError) {
+      try {
+        const [project] = await db
+          .select({
+            errorMessage: projects.errorMessage,
+            devServerStatus: projects.devServerStatus,
+            status: projects.status,
+          })
+          .from(projects)
+          .where(eq(projects.id, projectId))
+          .limit(1);
+
+        if (
+          project?.errorMessage &&
+          project.devServerStatus === 'failed' &&
+          project.status !== 'failed' &&
+          /preview failed|sandbox sync failed/i.test(project.errorMessage)
+        ) {
+          next.previewError = project.errorMessage;
+          const feed = Array.isArray(next.activityFeed)
+            ? ([...next.activityFeed] as Array<Record<string, unknown>>)
+            : [];
+          if (!feed.some((item) => item.id === 'status-preview-error-recovered')) {
+            feed.push({
+              id: 'status-preview-error-recovered',
+              kind: 'status',
+              timestamp: new Date(),
+              label: project.errorMessage,
+              status: 'error',
+            });
+            next.activityFeed = feed;
+          }
+        }
+      } catch (error) {
+        buildLogger.websocket.error('Failed to load project preview error for recovery', error, {
+          projectId,
+        });
+      }
+    }
+
+    return next;
+  }
+
+  /**
    * Send current state to a client (on reconnect)
    * Fetches the active build session from database and sends full state
    */
@@ -1323,19 +1464,37 @@ class BuildWebSocketServer {
 
         if (recentSessions.length > 0 && recentSessions[0].rawState) {
           buildLogger.log('debug', 'websocket', `Sending completed session state for project ${client.projectId}`);
+          const enriched = await this.enrichRecoveredState(
+            client.projectId,
+            recentSessions[0].rawState as Record<string, unknown>
+          );
           this.sendMessage(client.ws, {
             type: 'state-recovery',
-            state: recentSessions[0].rawState,
+            state: enriched,
             sessionStatus: recentSessions[0].status,
             timestamp: Date.now(),
           });
           return;
         }
 
-        // No session at all
+        // No session at all — still surface buffered preview/status if present
+        const emptyEnriched = await this.enrichRecoveredState(client.projectId, {
+          id: `recovery-${client.projectId}`,
+          projectId: client.projectId,
+          projectName: '',
+          todos: [],
+          toolsByTodo: {},
+          textByTodo: {},
+          activeTodoIndex: -1,
+          isActive: false,
+          startTime: new Date(),
+          activityFeed: [],
+        });
         this.sendMessage(client.ws, {
           type: 'state-recovery',
-          state: null,
+          state: emptyEnriched?.previewError || (emptyEnriched?.activityFeed as unknown[] | undefined)?.length
+            ? emptyEnriched
+            : null,
           timestamp: Date.now(),
         });
         return;
@@ -1346,9 +1505,13 @@ class BuildWebSocketServer {
       // If rawState exists, send it directly (most efficient)
       if (session.rawState) {
         buildLogger.log('debug', 'websocket', `Sending active session state for project ${client.projectId}`);
+        const enriched = await this.enrichRecoveredState(
+          client.projectId,
+          session.rawState as Record<string, unknown>
+        );
         this.sendMessage(client.ws, {
           type: 'state-recovery',
-          state: session.rawState,
+          state: enriched,
           sessionId: session.id,
           sessionStatus: session.status,
           timestamp: Date.now(),
@@ -1412,12 +1575,18 @@ class BuildWebSocketServer {
         buildSummary: session.summary,
         isAutoFix: session.isAutoFix,
         autoFixError: session.autoFixError,
+        activityFeed: [],
       };
+
+      const enriched = await this.enrichRecoveredState(
+        client.projectId,
+        reconstructedState as unknown as Record<string, unknown>
+      );
 
       buildLogger.log('debug', 'websocket', `Sending reconstructed state for project ${client.projectId}`);
       this.sendMessage(client.ws, {
         type: 'state-recovery',
-        state: reconstructedState,
+        state: enriched,
         sessionId: session.id,
         sessionStatus: session.status,
         timestamp: Date.now(),
