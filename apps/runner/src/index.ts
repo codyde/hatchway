@@ -423,6 +423,66 @@ function shouldEarlyStopOnTodos(
   return actionable.every((todo) => todo.status === 'completed');
 }
 
+/**
+ * Operation-aware Write/Edit budget. Once enough implementation tools land,
+ * stop even if TodoWrite never succeeded — the main latency killer on docs/sites
+ * was 40+ turns of polish after the app was already usable.
+ */
+function resolveImplementationToolBudget(operationType?: string): number {
+  switch (operationType) {
+    case 'autofix':
+      return 6;
+    case 'focused-edit':
+      return 5;
+    case 'enhancement':
+      return 12;
+    case 'continuation':
+      return 10;
+    case 'initial-build':
+    default:
+      return 14;
+  }
+}
+
+function isVerificationCommand(command: unknown): boolean {
+  if (typeof command !== 'string' || !command.trim()) return false;
+  const c = command.toLowerCase();
+  // Match common one-shot verify commands; avoid matching long-running dev servers.
+  if (/\b(dev|start|serve)\b/.test(c) && !/\b(build|typecheck|tsc|lint|test)\b/.test(c)) {
+    return false;
+  }
+  return (
+    /\bnpm\s+run\s+build\b/.test(c) ||
+    /\bpnpm\s+(run\s+)?build\b/.test(c) ||
+    /\byarn\s+(run\s+)?build\b/.test(c) ||
+    /\bbun\s+run\s+build\b/.test(c) ||
+    /\bnpm\s+run\s+typecheck\b/.test(c) ||
+    /\bpnpm\s+(run\s+)?typecheck\b/.test(c) ||
+    /\byarn\s+(run\s+)?typecheck\b/.test(c) ||
+    /\btsc\b/.test(c) ||
+    /\bnext\s+build\b/.test(c) ||
+    /\bvite\s+build\b/.test(c)
+  );
+}
+
+/**
+ * After real files landed and one verification command completed, stop.
+ * Does not require TodoWrite success.
+ */
+function shouldEarlyStopAfterVerification(options: {
+  implemented: boolean;
+  uniqueFilesModified: number;
+  verificationPasses: number;
+  minFiles?: number;
+}): boolean {
+  const minFiles = options.minFiles ?? 3;
+  return (
+    options.implemented &&
+    options.uniqueFilesModified >= minFiles &&
+    options.verificationPasses >= 1
+  );
+}
+
 function isAbortLikeError(error: unknown): boolean {
   if (!error) return false;
   if (typeof error === 'object') {
@@ -2515,7 +2575,8 @@ export async function startRunner(options: RunnerOptions = {}) {
         fileLog.info("Agent:", command.payload?.agent);
         fileLog.info("Template:", command.payload?.template);
 
-        // Early-stop is intentional success (todos done after implementation).
+        // Early-stop is intentional success (todos done after implementation,
+        // write budget hit, or one verification pass after real work).
         // Hoisted so abort/cancel/max-turns errors can still complete the build cleanly.
         let earlyStopTriggered = false;
         let earlyStopReason: string | undefined;
@@ -2524,6 +2585,11 @@ export async function startRunner(options: RunnerOptions = {}) {
         const completedTodos: string[] = [];
         let latestTodos: TrackedTodo[] = [];
         let implementedViaTools = false;
+        let implementationToolCount = 0;
+        let verificationPassCount = 0;
+        const pendingVerificationToolIds = new Set<string>();
+        const operationTypeForBudget = command.payload?.operationType || 'initial-build';
+        const implementationToolBudget = resolveImplementationToolBudget(operationTypeForBudget);
 
         try {
           loggedFirstChunk = false;
@@ -2753,6 +2819,32 @@ export async function startRunner(options: RunnerOptions = {}) {
               // ignore repeated abort
             }
           };
+
+          const maybeStopOnImplementationBudget = async () => {
+            if (implementationToolCount >= implementationToolBudget) {
+              await requestEarlyStop(
+                `implementation tool budget reached (${implementationToolCount}/${implementationToolBudget})`,
+              );
+              return true;
+            }
+            return false;
+          };
+
+          const maybeStopAfterVerification = async () => {
+            if (
+              shouldEarlyStopAfterVerification({
+                implemented: implementedViaTools,
+                uniqueFilesModified: filesModified.size,
+                verificationPasses: verificationPassCount,
+              })
+            ) {
+              await requestEarlyStop(
+                `verification complete after implementation (${filesModified.size} files, ${verificationPassCount} verify pass)`,
+              );
+              return true;
+            }
+            return false;
+          };
           
           while (true) {
             if (earlyStopTriggered) {
@@ -2932,6 +3024,33 @@ export async function startRunner(options: RunnerOptions = {}) {
 
                     if (isImplementationTool(toolName)) {
                       implementedViaTools = true;
+                      implementationToolCount += 1;
+
+                      const input = block.input as { file_path?: string; filePath?: string } | undefined;
+                      const filePath = input?.file_path || input?.filePath;
+                      if (filePath) {
+                        const relativePath = filePath.includes('/')
+                          ? filePath.split('/').slice(-2).join('/')
+                          : filePath;
+                        filesModified.add(relativePath);
+                      }
+
+                      if (!(await maybeStopOnImplementationBudget())) {
+                        if (shouldEarlyStopOnTodos(latestTodos, { implemented: true })) {
+                          await requestEarlyStop(
+                            `implementation landed and ${latestTodos.length} todos already complete`,
+                          );
+                        }
+                      }
+                    }
+
+                    if (
+                      typeof toolName === 'string' &&
+                      /^bash$/i.test(toolName) &&
+                      typeof toolId === 'string' &&
+                      isVerificationCommand((block.input as { command?: string } | undefined)?.command)
+                    ) {
+                      pendingVerificationToolIds.add(toolId);
                     }
                     
                     if (DEBUG_BUILD) {
@@ -2963,6 +3082,15 @@ export async function startRunner(options: RunnerOptions = {}) {
                           failed: Boolean(isError),
                         });
                         timingContext.activeToolTimings.delete(toolId);
+                      }
+
+                      // Soft-stop after a successful one-shot verify when files already landed.
+                      if (pendingVerificationToolIds.has(toolId)) {
+                        pendingVerificationToolIds.delete(toolId);
+                        if (!isError) {
+                          verificationPassCount += 1;
+                          await maybeStopAfterVerification();
+                        }
                       }
                     }
 
@@ -3059,10 +3187,13 @@ export async function startRunner(options: RunnerOptions = {}) {
 
                 if (isImplementationTool(toolEvent.toolName)) {
                   implementedViaTools = true;
+                  // Budget counting happens on the raw tool_use path to avoid double-count.
                   if (shouldEarlyStopOnTodos(latestTodos, { implemented: true })) {
                     await requestEarlyStop(
                       `implementation landed and ${latestTodos.length} todos already complete`,
                     );
+                  } else {
+                    await maybeStopOnImplementationBudget();
                   }
                 }
               }

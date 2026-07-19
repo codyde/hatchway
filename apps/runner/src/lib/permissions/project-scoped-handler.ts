@@ -49,7 +49,7 @@ export function createProjectScopedPermissionHandler(projectDirectory: string): 
         behavior: 'deny',
         message:
           `Tool "${toolName}" is disabled for Hatchway builds. ` +
-          'Use Bash/Read/Write/Edit/Glob/Grep, TodoWrite for progress, and WebSearch/WebFetch for docs.',
+          'Use Bash/Read/Write/Edit/Glob/Grep and TodoWrite for progress. Prefer local files over web lookups.',
         interrupt: false,
       };
     }
