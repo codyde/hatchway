@@ -586,28 +586,29 @@ IMPORTANT:
               console.log(`[events] 📝 Saving build summary for project ${projectId}: ${buildSummary.slice(0, 100)}...`);
             }
 
-            // Save summary to the most recent generation session for this project
-            if (buildSummary) {
-              try {
-                // Find the most recent active/completed session for this project
-                const [latestSession] = await db.select()
-                  .from(generationSessions)
-                  .where(eq(generationSessions.projectId, projectId))
-                  .orderBy(desc(generationSessions.createdAt))
-                  .limit(1);
-                
-                if (latestSession) {
-                  await db.update(generationSessions)
-                    .set({ 
-                      summary: buildSummary,
-                      updatedAt: new Date(),
-                    })
-                    .where(eq(generationSessions.id, latestSession.id));
-                  console.log(`[events] ✅ Saved summary to session ${latestSession.id}`);
-                }
-              } catch (err) {
-                console.error(`[events] ❌ Failed to save build summary:`, err);
+            // Always mark the latest generation session completed on build-completed.
+            // Summary may arrive later via build-summary; don't leave the session
+            // active (or let a later preview error look like a build failure).
+            try {
+              const [latestSession] = await db.select()
+                .from(generationSessions)
+                .where(eq(generationSessions.projectId, projectId))
+                .orderBy(desc(generationSessions.createdAt))
+                .limit(1);
+
+              if (latestSession && latestSession.status !== 'cancelled') {
+                await db.update(generationSessions)
+                  .set({
+                    status: 'completed',
+                    ...(buildSummary ? { summary: buildSummary } : {}),
+                    endedAt: latestSession.endedAt ?? new Date(),
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(generationSessions.id, latestSession.id));
+                console.log(`[events] ✅ Marked session ${latestSession.id} completed${buildSummary ? ' with summary' : ''}`);
               }
+            } catch (err) {
+              console.error(`[events] ❌ Failed to finalize generation session:`, err);
             }
 
             const [updated] = await db.update(projects)
@@ -773,7 +774,9 @@ IMPORTANT:
             try {
               await db.update(generationSessions)
                 .set({
+                  status: 'completed',
                   summary: buildSummary,
+                  endedAt: new Date(),
                   updatedAt: new Date(),
                 })
                 .where(eq(generationSessions.id, targetSessionId));

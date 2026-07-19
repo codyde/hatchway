@@ -79,7 +79,11 @@ function shQuote(s: string): string {
 async function execOk(sb: Sandbox, cmd: string, timeoutSec: number): Promise<string> {
   const r = await sb.exec(cmd, { timeoutSec });
   if (r.exitCode !== 0) {
-    throw new Error(`sandbox exec failed (exit ${r.exitCode}): ${(r.stderr || r.stdout || '').slice(0, 400)}`);
+    // Prefer the tail of stderr/stdout — npm prints long warning headers first and
+    // the actual failure reason (ERESOLVE, missing binary, next bind error) last.
+    const combined = `${r.stderr || ''}\n${r.stdout || ''}`.trim();
+    const tail = combined.length > 600 ? combined.slice(-600) : combined;
+    throw new Error(`sandbox exec failed (exit ${r.exitCode}): ${tail || 'no output'}`);
   }
   return r.stdout ?? '';
 }
@@ -196,7 +200,18 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
       `fi; }`,
     'rm -f /tmp/workspace.tgz.b64',
     `cd ${WORKSPACE}`,
-    installCommand,
+    // Template .npmrc may contain pnpm-only keys (enable-modules-dir, shamefully-hoist).
+    // npm treats unknown project config as hard errors on newer versions, so strip those
+    // keys before install when using npm. Keep the file for pnpm/yarn installs.
+    `if echo ${shQuote(installCommand)} | grep -Eq '(^|[[:space:]])npm([[:space:]]|$)'; then ` +
+      `if [ -f .npmrc ]; then ` +
+        `grep -Ev '^(enable-modules-dir|shamefully-hoist|auto-install-peers|node-linker|public-hoist-pattern)=' .npmrc > .npmrc.hatchway 2>/dev/null || true; ` +
+        `mv .npmrc.hatchway .npmrc; ` +
+      `fi; ` +
+    `fi`,
+    // Surface install failures with a log tail rather than only npm warning noise.
+    `{ ${installCommand}; } > /tmp/sandbox-install.log 2>&1 || { echo "[sandbox] install failed: ${installCommand}"; tail -n 80 /tmp/sandbox-install.log; exit 1; }`,
+    'tail -n 20 /tmp/sandbox-install.log 2>/dev/null || true',
     // Restart only the dev server with the freshly-synced code.
     'tmux kill-session -t dev 2>/dev/null || true',
     // Vite/Astro IGNORE the PORT env var (they only honor --port), so pass the

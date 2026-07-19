@@ -140,8 +140,23 @@ export function registerBuild(
             const toolName = eventData.toolName as string | undefined;
             
             if (toolName === 'TodoWrite') {
-              const input = eventData.input as { todos?: Array<{ content?: string; activeForm?: string; status?: string }> } | undefined;
-              const todos = Array.isArray(input?.todos) ? input.todos : [];
+              const input = eventData.input as { todos?: unknown } | undefined;
+              let todosRaw = input?.todos;
+              if (typeof todosRaw === 'string') {
+                try {
+                  const parsed = JSON.parse(todosRaw) as unknown;
+                  todosRaw = Array.isArray(parsed)
+                    ? parsed
+                    : parsed && typeof parsed === 'object' && Array.isArray((parsed as { todos?: unknown }).todos)
+                      ? (parsed as { todos: unknown[] }).todos
+                      : [];
+                } catch {
+                  todosRaw = [];
+                }
+              }
+              const todos = Array.isArray(todosRaw)
+                ? todosRaw.filter((t): t is { content?: string; activeForm?: string; status?: string } => !!t && typeof t === 'object')
+                : [];
               
               // Update local active todo index for tracking
               context.currentActiveTodoIndex = todos.findIndex(t => t.status === 'in_progress');

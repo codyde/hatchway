@@ -131,9 +131,11 @@ export async function downloadTemplateWithGit(
  */
 async function createNpmrc(projectPath: string): Promise<void> {
   const npmrcPath = join(projectPath, '.npmrc');
-  const npmrcContent = `# Disable workspace mode - treat as standalone project
-enable-modules-dir=true
-shamefully-hoist=false
+  // Keep this npm-safe. pnpm-only keys (enable-modules-dir, shamefully-hoist)
+  // make newer npm fail project installs inside the sandbox with
+  // "Unknown project config" errors.
+  const npmrcContent = `# Standalone project (no monorepo workspace linking)
+install-links=false
 `;
 
   try {
