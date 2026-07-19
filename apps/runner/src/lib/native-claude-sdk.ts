@@ -367,10 +367,22 @@ export function createNativeClaudeQuery(
         // Enable SDK debug logging only when explicitly diagnosing the SDK.
         ...(process.env.DEBUG_SKILLS === '1' ? { DEBUG_CLAUDE_AGENT_SDK: '1' } : {}),
       },
-      // Coding + TodoWrite progress. Web tools only outside initial-build.
-      // Task/MCP/plan tools stay off.
-      tools: resolvedTools,
-      disallowedTools: resolvedDisallowedTools,
+      // Use the Claude Code tool preset so built-ins like TodoWrite stay enabled.
+      // An explicit string allowlist has been observed to leave TodoWrite in a
+      // "exists but is not enabled in this context" state. Deny nested/plan/web
+      // tools via disallowedTools instead.
+      tools: { type: 'preset', preset: 'claude_code' },
+      // Keep resolvedTools logged for ops; deny list is the real gate.
+      // Also deny anything not in our intended core set on initial-build by
+      // expanding disallowedTools with known extras beyond web/task/plan.
+      disallowedTools: [
+        ...resolvedDisallowedTools,
+        // Extra Claude Code tools we never want during Hatchway builds.
+        'TaskOutput',
+        'KillShell',
+        'ListMcpResources',
+        'ReadMcpResource',
+      ],
       // Pass abort controller for cancellation support
       // NOTE: There is a known bug in the Claude Agent SDK where AbortController
       // signals are not fully respected. When abort() is called, the SDK may

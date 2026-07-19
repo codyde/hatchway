@@ -220,8 +220,8 @@ function formatToolLogMessage(toolName: string, input: unknown): string {
     }
     
     case 'TodoWrite': {
-      const todos = args.todos;
-      if (Array.isArray(todos)) {
+      const todos = normalizeTodoWriteTodos(args.todos);
+      if (todos.length > 0) {
         return `Update tasks (${todos.length} items)`;
       }
       return 'Update tasks';
@@ -230,6 +230,55 @@ function formatToolLogMessage(toolName: string, input: unknown): string {
     default:
       return toolName;
   }
+}
+
+type NormalizedTodo = {
+  content: string;
+  status: string;
+  activeForm?: string;
+};
+
+function asTodoRecord(item: unknown): NormalizedTodo | null {
+  if (!item || typeof item !== 'object') return null;
+  const rec = item as Record<string, unknown>;
+  const content =
+    typeof rec.content === 'string'
+      ? rec.content
+      : typeof rec.activeForm === 'string'
+        ? rec.activeForm
+        : typeof rec.title === 'string'
+          ? rec.title
+          : '';
+  if (!content.trim()) return null;
+  return {
+    content: content.trim(),
+    status: typeof rec.status === 'string' ? rec.status : 'pending',
+    activeForm: typeof rec.activeForm === 'string' ? rec.activeForm : undefined,
+  };
+}
+
+/** Claude sometimes serializes TodoWrite.todos as a JSON string instead of an array. */
+function normalizeTodoWriteTodos(raw: unknown): NormalizedTodo[] {
+  const fromArray = (items: unknown[]): NormalizedTodo[] =>
+    items.map(asTodoRecord).filter((item): item is NormalizedTodo => item !== null);
+
+  if (Array.isArray(raw)) {
+    return fromArray(raw);
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (Array.isArray(parsed)) return fromArray(parsed);
+      if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { todos?: unknown }).todos)) {
+        return fromArray((parsed as { todos: unknown[] }).todos);
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 async function ensureAuthorized(request: Request): Promise<boolean> {
@@ -404,16 +453,17 @@ export async function POST(request: Request) {
           });
 
           // DB: Upsert todos
-          const todos = Array.isArray(event.input?.todos) ? event.input.todos : [];
+          // Claude sometimes serializes `todos` as a JSON string instead of an array.
+          const todos = normalizeTodoWriteTodos(event.input?.todos);
           const prevCount = previousTodoCounts.get(sessionId) ?? 0;
 
           if (todos.length > 0) {
             const todoValues = todos.map((todo, index) => ({
               sessionId,
               todoIndex: index,
-              content: todo?.content ?? todo?.activeForm ?? 'Untitled task',
-              activeForm: todo?.activeForm ?? null,
-              status: todo?.status ?? 'pending',
+              content: todo.content,
+              activeForm: todo.activeForm ?? null,
+              status: todo.status,
               createdAt: timestamp,
               updatedAt: timestamp,
             }));
@@ -456,8 +506,8 @@ export async function POST(request: Request) {
             projectId,
             sessionId,
             todos.map(t => ({
-              content: t.content ?? t.activeForm ?? 'Untitled task',
-              status: t.status ?? 'pending',
+              content: t.content,
+              status: t.status,
               activeForm: t.activeForm,
             })),
             activeIndex,

@@ -508,8 +508,7 @@ Select based on user's request:
 After cloning:
 1. cd ${projectName}
 2. Create .npmrc containing:
-   enable-modules-dir=true
-   shamefully-hoist=false
+   install-links=false
 3. Update package.json "name" field to "${projectName}"
 4. Implement the user's request by modifying the template files`);
     } else {

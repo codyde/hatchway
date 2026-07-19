@@ -17,10 +17,13 @@ import { useTheme } from "@/contexts/ThemeContext";
 import RenameProjectModal from "@/components/RenameProjectModal";
 import DeleteProjectModal from "@/components/DeleteProjectModal";
 import { TodoList } from "@/components/BuildProgress/TodoList";
+import { ActivityFeed } from "@/components/BuildProgress/ActivityFeed";
+import BuildProgress from "@/components/BuildProgress";
 import { CompletedTodosSummary } from "@/components/CompletedTodosSummary";
 import { ErrorDetectedSection } from "@/components/ErrorDetectedSection";
 import { PlanningPhase } from "@/components/BuildProgress/PlanningPhase";
 import { AgentNotesSection, ActiveAgentNote } from "@/components/AgentNotesSection";
+import type { ActivityItem } from "@/types/generation";
 import ProjectMetadataCard from "@/components/ProjectMetadataCard";
 import ImageAttachment from "@/components/ImageAttachment";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -266,7 +269,9 @@ function HomeContent() {
 
   const isThinking =
     generationState?.isActive &&
-    (!generationState.todos || generationState.todos.length === 0);
+    (!generationState.todos || generationState.todos.length === 0) &&
+    !(generationState.activityFeed && generationState.activityFeed.length > 0) &&
+    !(generationState.planningTools && generationState.planningTools.length > 0);
   const classifyMessage = useCallback((message: Message) => {
     const role = (message.role ?? message.type ?? '').toLowerCase();
     if (role === 'user') return 'user';
@@ -1813,13 +1818,6 @@ function HomeContent() {
                 const baseState = ensureGenerationState(prev);
                 if (!baseState) return prev;
 
-                // Skip nesting if todos haven't been created yet
-                // Tools will be saved to DB and re-associated when state refreshes from backend
-                if (!baseState.todos || baseState.todos.length === 0) {
-                  // Silent: This is expected during project exploration phase
-                  return prev;
-                }
-
                 const tool: ToolCall = {
                   id: data.toolCallId,
                   name: data.toolName,
@@ -1828,11 +1826,53 @@ function HomeContent() {
                   startTime: new Date(),
                 };
 
+                const resource =
+                  typeof (data.input as { file_path?: string } | undefined)?.file_path === 'string'
+                    ? (data.input as { file_path: string }).file_path
+                    : typeof (data.input as { command?: string } | undefined)?.command === 'string'
+                      ? (data.input as { command: string }).command.slice(0, 80)
+                      : undefined;
+
+                const activityItem: ActivityItem = {
+                  id: `tool-${tool.id}`,
+                  kind: 'tool',
+                  timestamp: new Date(),
+                  label: tool.name,
+                  detail: resource,
+                  status: 'running',
+                  toolName: tool.name,
+                  toolId: tool.id,
+                };
+
+                // Before TodoWrite: keep tools on planningTools + activity feed
+                if (!baseState.todos || baseState.todos.length === 0) {
+                  const planningTools = [...(baseState.planningTools || [])];
+                  const existingIdx = planningTools.findIndex((t) => t.id === tool.id);
+                  if (existingIdx >= 0) planningTools[existingIdx] = tool;
+                  else planningTools.push(tool);
+
+                  const feed = [...(baseState.activityFeed || [])];
+                  const feedIdx = feed.findIndex((item) => item.id === activityItem.id);
+                  if (feedIdx >= 0) feed[feedIdx] = { ...feed[feedIdx], ...activityItem };
+                  else feed.push(activityItem);
+
+                  return {
+                    ...baseState,
+                    planningTools,
+                    activePlanningTool: tool,
+                    activityFeed: feed.slice(-200),
+                  };
+                }
+
                 const activeIndex =
                   baseState.activeTodoIndex >= 0
                     ? baseState.activeTodoIndex
                     : 0;
                 const existing = baseState.toolsByTodo[activeIndex] || [];
+                const feed = [...(baseState.activityFeed || [])];
+                const feedIdx = feed.findIndex((item) => item.id === activityItem.id);
+                if (feedIdx >= 0) feed[feedIdx] = { ...feed[feedIdx], ...activityItem, todoIndex: activeIndex };
+                else feed.push({ ...activityItem, todoIndex: activeIndex });
 
                 if (DEBUG_PAGE) console.log(
                   "   ✅ Nesting under todo",
@@ -1845,8 +1885,9 @@ function HomeContent() {
                   ...baseState,
                   toolsByTodo: {
                     ...baseState.toolsByTodo,
-                    [activeIndex]: [...existing, tool],
+                    [activeIndex]: [...existing.filter((t) => t.id !== tool.id), tool],
                   },
+                  activityFeed: feed.slice(-200),
                 };
 
                 if (DEBUG_PAGE) console.log(
@@ -3220,65 +3261,14 @@ function HomeContent() {
                                           </div>
                                         )}
 
-                                        {/* Active Build Progress - Skip for auto-fix sessions which are rendered separately */}
-                                        {hasActiveBuild && generationState.todos && generationState.todos.length > 0 && !generationState.isAutoFix && (
+                                        {/* Active Build Progress - activity feed (tools/status), not TodoWrite-gated */}
+                                        {hasActiveBuild && !generationState.isAutoFix && (
                                           <div className="space-y-3">
-                                            <div className="flex items-center justify-between">
-                                              <p className="text-xs uppercase tracking-[0.3em] text-gray-500">
-                                                Build in progress
-                                              </p>
-                                              <div className="flex items-center gap-2">
-                                                <div className="text-xs text-gray-400">
-                                                  {generationState.todos.filter(t => t.status === 'completed').length} / {generationState.todos.length}
-                                                </div>
-                                                <div className="text-sm font-semibold text-theme-primary">
-                                                  {Math.round((generationState.todos.filter(t => t.status === 'completed').length / generationState.todos.length) * 100)}%
-                                                </div>
-                                              </div>
-                                            </div>
-                                            <div className="h-1 overflow-hidden rounded-full bg-white/10">
-                                              <motion.div
-                                                initial={{ width: 0 }}
-                                                animate={{
-                                                  width: `${(generationState.todos.filter(t => t.status === 'completed').length / generationState.todos.length) * 100}%`,
-                                                }}
-                                                transition={{ duration: 0.5, ease: 'easeOut' }}
-                                                className="h-full bg-gradient-to-r from-emerald-400 to-sky-400"
-                                              />
-                                            </div>
-                                            <TodoList
-                                              todos={generationState.todos}
-                                              toolsByTodo={generationState.toolsByTodo}
-                                              activeTodoIndex={generationState.activeTodoIndex}
-                                              allTodosCompleted={generationState.todos.every(t => t.status === 'completed')}
+                                            <BuildProgress
+                                              state={generationState}
+                                              onCancel={cancelBuild}
+                                              isCancelling={isCancelling}
                                             />
-                                            
-                                            {/* Active agent note - shows most recent reasoning */}
-                                            {generationState.textByTodo && Object.keys(generationState.textByTodo).length > 0 && (
-                                              <ActiveAgentNote
-                                                textByTodo={generationState.textByTodo}
-                                                activeTodoIndex={generationState.activeTodoIndex}
-                                              />
-                                            )}
-
-                                            {/* Stop Build button - below the task list */}
-                                            <button
-                                              onClick={cancelBuild}
-                                              disabled={isCancelling}
-                                              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-red-400 transition-colors rounded-lg border border-white/10 hover:border-red-500/30 hover:bg-red-500/5 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                              {isCancelling ? (
-                                                <>
-                                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                                  <span>Cancelling...</span>
-                                                </>
-                                              ) : (
-                                                <>
-                                                  <Square className="w-4 h-4" />
-                                                  <span>Stop Build</span>
-                                                </>
-                                              )}
-                                            </button>
                                           </div>
                                         )}
 
@@ -3322,6 +3312,38 @@ function HomeContent() {
                                                 <CompletedTodosSummary todos={correspondingBuild.todos} />
                                               </div>
                                             )}
+
+                                            {/* Activity feed fallback for completed builds (no todos) */}
+                                            {(!correspondingBuild.todos || correspondingBuild.todos.length === 0) &&
+                                              ((correspondingBuild.activityFeed && correspondingBuild.activityFeed.length > 0) ||
+                                                (correspondingBuild.planningTools && correspondingBuild.planningTools.length > 0)) && (
+                                              <div className="space-y-2 rounded-xl theme-card overflow-hidden">
+                                                <p className="px-4 pt-3 text-xs uppercase tracking-[0.3em] text-gray-500">
+                                                  Activity
+                                                </p>
+                                                <ActivityFeed
+                                                  items={
+                                                    correspondingBuild.activityFeed && correspondingBuild.activityFeed.length > 0
+                                                      ? correspondingBuild.activityFeed
+                                                      : (correspondingBuild.planningTools || []).map((tool) => ({
+                                                          id: `tool-${tool.id}`,
+                                                          kind: 'tool' as const,
+                                                          timestamp: tool.startTime || correspondingBuild.startTime,
+                                                          label: tool.name,
+                                                          status:
+                                                            tool.state === 'error'
+                                                              ? ('error' as const)
+                                                              : tool.state === 'output-available'
+                                                                ? ('completed' as const)
+                                                                : ('running' as const),
+                                                          toolName: tool.name,
+                                                          toolId: tool.id,
+                                                        }))
+                                                  }
+                                                  isActive={false}
+                                                />
+                                              </div>
+                                            )}
                                             
                                             {/* Build summary section - show even without todos */}
                                             {correspondingBuild.buildSummary && (
@@ -3334,6 +3356,12 @@ function HomeContent() {
                                                     {correspondingBuild.buildSummary}
                                                   </ReactMarkdown>
                                                 </div>
+                                              </div>
+                                            )}
+
+                                            {correspondingBuild.previewError && (
+                                              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                                                {correspondingBuild.previewError}
                                               </div>
                                             )}
                                           </>
