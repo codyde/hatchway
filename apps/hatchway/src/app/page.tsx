@@ -1667,6 +1667,7 @@ function HomeContent() {
             textBlocksMap.set(data.id, { type: "text", text: "" });
           } else if (data.type === "text-delta") {
             const blockId = data.id;
+            const delta = typeof data.delta === "string" ? data.delta : "";
 
             // Get or create text block
             let textBlock = textBlocksMap.get(blockId);
@@ -1676,7 +1677,60 @@ function HomeContent() {
             }
 
             // Accumulate text
-            textBlock.text += data.delta;
+            textBlock.text += delta;
+
+            // Stream Claude narrative into the live activity feed (TUI-style chat).
+            // Prefer whole deltas when the runner sends complete assistant turns;
+            // still support true token streaming by upserting the same block id.
+            if (delta.trim().length > 0 || textBlock.text.trim().length > 0) {
+              const displayText = textBlock.text.trim();
+              if (displayText.length > 0) {
+                updateGenerationState((prev) => {
+                  if (!prev) return null;
+                  const activeIndex =
+                    prev.activeTodoIndex >= 0 ? prev.activeTodoIndex : 0;
+                  const existing = prev.textByTodo[activeIndex] || [];
+                  const textMsg = {
+                    id: blockId,
+                    text: displayText,
+                    timestamp: new Date(),
+                  };
+                  const textIdx = existing.findIndex((t) => t.id === blockId);
+                  const nextTextByTodo = [...existing];
+                  if (textIdx >= 0) nextTextByTodo[textIdx] = textMsg;
+                  else nextTextByTodo.push(textMsg);
+
+                  const feed = [...(prev.activityFeed || [])];
+                  const activityItem: ActivityItem = {
+                    id: `text-${blockId}`,
+                    kind: "text",
+                    timestamp: new Date(),
+                    label: displayText.length > 400 ? `${displayText.slice(0, 400)}…` : displayText,
+                    status: "info",
+                    todoIndex: activeIndex,
+                  };
+                  const feedIdx = feed.findIndex((item) => item.id === activityItem.id);
+                  if (feedIdx >= 0) {
+                    feed[feedIdx] = {
+                      ...feed[feedIdx],
+                      ...activityItem,
+                      timestamp: feed[feedIdx].timestamp,
+                    };
+                  } else {
+                    feed.push(activityItem);
+                  }
+
+                  return {
+                    ...prev,
+                    textByTodo: {
+                      ...prev.textByTodo,
+                      [activeIndex]: nextTextByTodo,
+                    },
+                    activityFeed: feed.slice(-200),
+                  };
+                });
+              }
+            }
 
             // Update message content (simplified - just update content string!)
             if (currentMessage?.id) {
@@ -1710,8 +1764,7 @@ function HomeContent() {
             }
           } else if (data.type === "text-end") {
             if (DEBUG_PAGE) console.log("✅ Text block finished:", data.id);
-            // Text messages are stored in textByTodo and displayed inside BuildProgress
-            // Don't add to main conversation messages array
+            // Narrative text already lives in activityFeed / textByTodo from text-delta
           } else if (data.type?.startsWith("codex-")) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             updateCodexState((codex) => processCodexEvent(codex, data as any));
@@ -1983,23 +2036,33 @@ function HomeContent() {
                 const activeIndex =
                   prev.activeTodoIndex >= 0 ? prev.activeTodoIndex : 0;
                 const existing = prev.textByTodo[activeIndex] || [];
+                const textId = `reasoning-${Date.now()}`;
+                const text = String(message);
+                const feed = [...(prev.activityFeed || [])];
+                feed.push({
+                  id: `text-${textId}`,
+                  kind: 'text',
+                  timestamp: new Date(),
+                  label: text.length > 400 ? `${text.slice(0, 400)}…` : text,
+                  status: 'info',
+                  todoIndex: activeIndex,
+                });
 
-                const updated = {
+                return {
                   ...prev,
                   textByTodo: {
                     ...prev.textByTodo,
                     [activeIndex]: [
                       ...existing,
                       {
-                        id: `reasoning-${Date.now()}`,
-                        text: message,
+                        id: textId,
+                        text,
                         timestamp: new Date(),
                       },
                     ],
                   },
+                  activityFeed: feed.slice(-200),
                 };
-
-                return updated;
               });
             }
           } else if (
