@@ -811,11 +811,75 @@ IMPORTANT:
           }
           case 'build-stream':
             break;
-          case 'error': {
+          case 'status': {
+            // Non-fatal progress note (sandbox provisioning, etc.)
+            const statusMessage =
+              'message' in event && typeof event.message === 'string'
+                ? event.message
+                : 'Status update';
+            console.log(`[events] ℹ️ Status for ${projectId}: ${statusMessage}`);
+            buildWebSocketServer.broadcastActivityStatus(projectId, '', {
+              message: statusMessage,
+              phase: 'phase' in event && typeof event.phase === 'string' ? event.phase : undefined,
+              level: 'info',
+            });
+            break;
+          }
+          case 'preview-failed': {
+            // Build succeeded but sandbox/preview provision failed.
+            // Keep generation session completed; only mark preview/dev server failed.
+            const previewError =
+              'error' in event && typeof event.error === 'string'
+                ? event.error
+                : 'Preview provision failed';
+            const friendly = `Preview failed: ${previewError}`.slice(0, 500);
+            console.log(`[events] ⚠️ Preview failed for ${projectId}: ${previewError.slice(0, 200)}`);
+
             const [updated] = await db.update(projects)
               .set({
                 devServerStatus: 'failed',
-                errorMessage: event.error,
+                errorMessage: friendly,
+                lastActivityAt: new Date(),
+              })
+              .where(eq(projects.id, projectId))
+              .returning();
+            if (updated) emitProjectUpdateFromData(projectId, updated);
+
+            buildWebSocketServer.broadcastActivityStatus(projectId, '', {
+              message: friendly,
+              phase: 'phase' in event && typeof event.phase === 'string' ? event.phase : 'sandbox-sync',
+              level: 'error',
+            });
+            break;
+          }
+          case 'error': {
+            const errText =
+              'error' in event && typeof event.error === 'string' ? event.error : 'Unknown error';
+            // Sandbox sync used to emit generic "error"; treat those as preview failures
+            // so a successful build is not shown as "Build failed".
+            if (/sandbox sync failed/i.test(errText)) {
+              const friendly = `Preview failed: ${errText}`.slice(0, 500);
+              const [updated] = await db.update(projects)
+                .set({
+                  devServerStatus: 'failed',
+                  errorMessage: friendly,
+                  lastActivityAt: new Date(),
+                })
+                .where(eq(projects.id, projectId))
+                .returning();
+              if (updated) emitProjectUpdateFromData(projectId, updated);
+              buildWebSocketServer.broadcastActivityStatus(projectId, '', {
+                message: friendly,
+                phase: 'sandbox-sync',
+                level: 'error',
+              });
+              break;
+            }
+
+            const [updated] = await db.update(projects)
+              .set({
+                devServerStatus: 'failed',
+                errorMessage: errText,
                 lastActivityAt: new Date(),
               })
               .where(eq(projects.id, projectId))

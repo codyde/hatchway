@@ -3,6 +3,8 @@ export type {
   TodoItem,
   ToolCall,
   TextMessage,
+  ActivityItem,
+  ActivityItemKind,
   BuildOperationType,
   GenerationSessionStatus,
   BuildPhase,

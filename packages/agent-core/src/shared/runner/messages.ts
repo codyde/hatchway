@@ -56,6 +56,8 @@ export type RunnerEventType =
   | 'hmr-message'
   | 'hmr-disconnected'
   | 'hmr-error'
+  | 'status'
+  | 'preview-failed'
   | 'error';
 
 export interface BaseCommand {
@@ -468,6 +470,24 @@ export interface ErrorEvent extends BaseEvent {
   stack?: string;
 }
 
+/** Non-fatal progress note (e.g. sandbox provisioning). */
+export interface StatusEvent extends BaseEvent {
+  type: 'status';
+  message: string;
+  phase?: string;
+}
+
+/**
+ * Preview/sandbox provision failed after a successful build.
+ * Must NOT mark the generation session as failed.
+ */
+export interface PreviewFailedEvent extends BaseEvent {
+  type: 'preview-failed';
+  error: string;
+  stack?: string;
+  phase?: string;
+}
+
 export interface DevServerErrorEvent extends BaseEvent {
   type: 'dev-server-error';
   error: string;
@@ -562,6 +582,8 @@ export type RunnerEvent =
   | HmrMessageEvent
   | HmrDisconnectedEvent
   | HmrErrorEvent
+  | StatusEvent
+  | PreviewFailedEvent
   | ErrorEvent;
 
 export type RunnerMessage = RunnerCommand | RunnerEvent;
