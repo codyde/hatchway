@@ -15,8 +15,8 @@ import { authenticateRunnerRequest, isLocalMode } from '@/lib/auth-helpers';
 import { syncAndRun, checkpointProject } from '@/lib/sandbox/manager';
 import { projectEvents } from '@/lib/project-events';
 
-// Installing deps inside the box can take a while.
-export const maxDuration = 300;
+// Cold sandboxes may need apt toolchain install + npm install + dev boot.
+export const maxDuration = 800;
 
 interface SyncBody {
   tarballBase64: string;

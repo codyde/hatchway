@@ -81,11 +81,48 @@ async function execOk(sb: Sandbox, cmd: string, timeoutSec: number): Promise<str
   if (r.exitCode !== 0) {
     // Prefer the tail of stderr/stdout — npm prints long warning headers first and
     // the actual failure reason (ERESOLVE, missing binary, next bind error) last.
+    // exitCode null usually means the sandbox exec timed out / was killed.
     const combined = `${r.stderr || ''}\n${r.stdout || ''}`.trim();
-    const tail = combined.length > 600 ? combined.slice(-600) : combined;
-    throw new Error(`sandbox exec failed (exit ${r.exitCode}): ${tail || 'no output'}`);
+    const tail = combined.length > 800 ? combined.slice(-800) : combined;
+    const codeLabel = r.exitCode == null ? 'timeout/killed' : String(r.exitCode);
+    throw new Error(`sandbox exec failed (exit ${codeLabel}): ${tail || 'no output'}`);
   }
   return r.stdout ?? '';
+}
+
+/**
+ * Ensure g++/make/python3 exist for native module rebuilds (better-sqlite3, etc.).
+ * Runs as its own exec so apt can take its own timeout budget and cannot starve
+ * the later install/dev-server steps. No-op when the base checkpoint already
+ * has the toolchain baked in.
+ */
+async function ensureNativeBuildToolchain(sb: Sandbox): Promise<void> {
+  const check = await sb.exec(
+    `bash -lc 'command -v g++ >/dev/null && command -v make >/dev/null && command -v python3 >/dev/null && echo READY || echo MISSING'`,
+    { timeoutSec: 30 },
+  );
+  if ((check.stdout || '').includes('READY')) return;
+
+  console.log('[sandbox] native build toolchain missing; installing build-essential/python3');
+  // Separate from extract/install so apt has its own timeout budget and clearer
+  // errors. Keep under the sandbox/sync route maxDuration headroom.
+  // Acquire::Retries helps flaky package mirrors.
+  await execOk(
+    sb,
+    `bash -lc ${shQuote(
+      [
+        'set -e',
+        'export DEBIAN_FRONTEND=noninteractive',
+        'apt-get -o Acquire::Retries=3 update -qq',
+        'apt-get -o Acquire::Retries=3 install -y -qq --no-install-recommends build-essential python3 pkg-config',
+        'command -v g++ >/dev/null',
+        'command -v make >/dev/null',
+        'command -v python3 >/dev/null',
+        'echo "[sandbox] native build toolchain ready"',
+      ].join('\n'),
+    )}`,
+    300,
+  );
 }
 
 /**
@@ -156,6 +193,11 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
   const token = requireEnv('RAILGATE_TOKEN');
   const port = options.port;
 
+  // Ensure native build deps BEFORE shipping the tarball so apt never shares a
+  // timeout budget with extract + npm install + dev server boot. Base
+  // checkpoints that already include the toolchain make this a ~1s no-op.
+  await ensureNativeBuildToolchain(sandbox);
+
   // Land the tarball (base64 text → decoded; avoids binary-transfer issues).
   await sandbox.files.write('/tmp/workspace.tgz.b64', options.tarballBase64);
 
@@ -200,13 +242,6 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
       `fi; }`,
     'rm -f /tmp/workspace.tgz.b64',
     `cd ${WORKSPACE}`,
-    // Native modules (better-sqlite3, sharp, etc.) need a compiler toolchain when
-    // prebuilds are missing for the sandbox Node ABI. Bake installs these once;
-    // this is a cheap no-op if already present, and covers fresh/unbaked boxes.
-    'if ! command -v g++ >/dev/null 2>&1 || ! command -v make >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then ' +
-      'echo "[sandbox] installing native build toolchain (python3/make/g++)"; ' +
-      'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential python3 python3-pip pkg-config; ' +
-    'fi',
     // Template .npmrc may contain pnpm-only keys (enable-modules-dir, shamefully-hoist).
     // npm treats unknown project config as hard errors on newer versions, so strip those
     // keys before install when using npm. Keep the file for pnpm/yarn installs.
@@ -218,7 +253,7 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
     `fi`,
     // Prefer prebuilt binaries when available; fall back to node-gyp with toolchain above.
     'export npm_config_build_from_source=false',
-    'export npm_config_python=python3',
+    'export npm_config_python="$(command -v python3 || echo python3)"',
     // Surface install failures with a log tail rather than only npm warning noise.
     `{ ${installCommand}; } > /tmp/sandbox-install.log 2>&1 || { echo "[sandbox] install failed: ${installCommand}"; tail -n 120 /tmp/sandbox-install.log; exit 1; }`,
     'tail -n 20 /tmp/sandbox-install.log 2>/dev/null || true',
