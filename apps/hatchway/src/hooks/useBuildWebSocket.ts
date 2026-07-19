@@ -9,7 +9,48 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { GenerationState } from '@/types/generation';
+import type { ActivityItem, GenerationState, ToolCall } from '@/types/generation';
+
+const ACTIVITY_FEED_MAX = 200;
+
+function getToolResourceLabel(tool: { name: string; input?: unknown }): string {
+  if (!tool.input) return '';
+  const input = tool.input as Record<string, unknown>;
+  if (typeof input.skillName === 'string') return input.skillName;
+  if (typeof input.file_path === 'string') {
+    const path = input.file_path;
+    const match = path.match(/hatchway-workspace\/[^/]+\/(.+)$/);
+    return match ? match[1] : path.split('/').slice(-2).join('/');
+  }
+  if (typeof input.path === 'string') {
+    const path = input.path;
+    const match = path.match(/hatchway-workspace\/[^/]+\/(.+)$/);
+    return match ? match[1] : path.split('/').slice(-2).join('/');
+  }
+  if (typeof input.command === 'string') {
+    return input.command.length > 80 ? `${input.command.slice(0, 80)}…` : input.command;
+  }
+  if (typeof input.query === 'string') {
+    return input.query.length > 80 ? `${input.query.slice(0, 80)}…` : input.query;
+  }
+  if (typeof input.pattern === 'string') return input.pattern;
+  if (typeof input.url === 'string') return input.url;
+  return '';
+}
+
+function upsertActivityItem(feed: ActivityItem[] | undefined, item: ActivityItem): ActivityItem[] {
+  const next = [...(feed || [])];
+  const existingIndex = next.findIndex((entry) => entry.id === item.id);
+  if (existingIndex >= 0) {
+    next[existingIndex] = { ...next[existingIndex], ...item, timestamp: next[existingIndex].timestamp };
+  } else {
+    next.push(item);
+  }
+  if (next.length > ACTIVITY_FEED_MAX) {
+    return next.slice(next.length - ACTIVITY_FEED_MAX);
+  }
+  return next;
+}
 
 interface WebSocketMessage {
   type: string;
@@ -260,10 +301,14 @@ export function useBuildWebSocket({
           isActive: true,
           startTime: new Date(),
           planningTools: [],
+          activityFeed: [],
         };
       }
       
       let newState = { ...prevState };
+      if (!newState.activityFeed) {
+        newState.activityFeed = [];
+      }
       
       for (const update of updates) {
         switch (update.type) {
@@ -280,11 +325,40 @@ export function useBuildWebSocket({
             if (buildStartData.projectId) {
               newState.projectId = buildStartData.projectId;
             }
+            newState.activityFeed = upsertActivityItem(newState.activityFeed, {
+              id: `status-build-started-${buildStartData.buildId || Date.now()}`,
+              kind: 'status',
+              timestamp: new Date(),
+              label: 'Build started',
+              status: 'info',
+            });
             // If this is an auto-fix build starting, clear the pending autofix state
             if (newState.isAutoFix) {
               setAutoFixState(null);
             }
             break;
+
+          case 'activity-status': {
+            const statusData = update.data as {
+              message?: string;
+              phase?: string;
+              level?: 'info' | 'success' | 'warning' | 'error';
+            };
+            const message = statusData.message || 'Status update';
+            const level = statusData.level || 'info';
+            newState.activityFeed = upsertActivityItem(newState.activityFeed, {
+              id: `status-${statusData.phase || 'general'}-${update.timestamp || Date.now()}`,
+              kind: 'status',
+              timestamp: new Date(update.timestamp || Date.now()),
+              label: message,
+              detail: statusData.phase,
+              status: level,
+            });
+            if (level === 'error' && /preview failed/i.test(message)) {
+              newState.previewError = message;
+            }
+            break;
+          }
 
           case 'autofix-started':
             // Auto-fix has been triggered - show immediate feedback
@@ -339,6 +413,21 @@ export function useBuildWebSocket({
                 newState.activePlanningTool = undefined;
               }
             }
+
+            const activeTodo =
+              mappedTodos[todosData.activeTodoIndex] ||
+              mappedTodos.find((t) => t.status === 'in_progress');
+            if (activeTodo) {
+              newState.activityFeed = upsertActivityItem(newState.activityFeed, {
+                id: `todo-${todosData.phase || 'build'}-${todosData.activeTodoIndex}-${activeTodo.content.slice(0, 40)}`,
+                kind: 'todo',
+                timestamp: new Date(),
+                label: activeTodo.status === 'in_progress' ? activeTodo.activeForm : activeTodo.content,
+                detail: todosData.phase === 'template' ? 'template' : 'build',
+                status: activeTodo.status === 'completed' ? 'completed' : 'running',
+                todoIndex: todosData.activeTodoIndex,
+              });
+            }
             break;
 
           case 'build-complete':
@@ -356,12 +445,27 @@ export function useBuildWebSocket({
               newState.buildSummary = completeData.summary;
               console.log(`[useBuildWebSocket] 📝 Set buildSummary on state`);
             }
+            newState.activityFeed = upsertActivityItem(newState.activityFeed, {
+              id: `status-build-${completeData.status}-${Date.now()}`,
+              kind: 'status',
+              timestamp: new Date(),
+              label: completeData.status === 'completed' ? 'Build complete' : 'Build failed',
+              detail: completeData.summary?.slice(0, 120),
+              status: completeData.status === 'completed' ? 'success' : 'error',
+            });
             break;
 
           case 'build-summary':
             const summaryData = update.data as { summary?: string };
             if (summaryData.summary) {
               newState.buildSummary = summaryData.summary;
+              newState.activityFeed = upsertActivityItem(newState.activityFeed, {
+                id: `text-summary-${Date.now()}`,
+                kind: 'text',
+                timestamp: new Date(),
+                label: summaryData.summary.slice(0, 200),
+                status: 'info',
+              });
             }
             break;
 
@@ -450,28 +554,58 @@ export function useBuildWebSocket({
               }
               // Note: We don't clear activePlanningTool on output-available anymore
               // The next input-available will replace it, keeping the UI responsive
-              break;
+            } else {
+              // Handle execution phase tools (todoIndex >= 0)
+              const targetTodoIndex = toolData.todoIndex;
+              const existingTools = newState.toolsByTodo[targetTodoIndex] || [];
+
+              // Check if tool already exists (prevent duplicates)
+              const existingIndex = existingTools.findIndex(t => t.id === toolData.id);
+              if (existingIndex >= 0) {
+                // Update in place so running -> completed is reflected live
+                const updatedTools = existingTools.map((t, idx) =>
+                  idx === existingIndex
+                    ? {
+                        ...t,
+                        ...toolCall,
+                        endTime:
+                          toolData.state === 'output-available' || toolData.state === 'error'
+                            ? new Date()
+                            : t.endTime,
+                      }
+                    : t
+                );
+                newState.toolsByTodo = {
+                  ...newState.toolsByTodo,
+                  [targetTodoIndex]: updatedTools,
+                };
+              } else {
+                // Track running and completed tools for the activity feed
+                newState.toolsByTodo = {
+                  ...newState.toolsByTodo,
+                  [targetTodoIndex]: [...existingTools, toolCall],
+                };
+              }
             }
 
-            // Handle execution phase tools (todoIndex >= 0)
-            const targetTodoIndex = toolData.todoIndex;
-            const existingTools = newState.toolsByTodo[targetTodoIndex] || [];
-
-            // Check if tool already exists (prevent duplicates)
-            const existingIndex = existingTools.findIndex(t => t.id === toolData.id);
-            if (existingIndex >= 0) {
-              break;
-            }
-
-            // Only add completed tools to toolsByTodo (for display in todo list)
-            if (toolData.state === 'output-available' || toolData.state === 'error') {
-              newState.toolsByTodo = {
-                ...newState.toolsByTodo,
-                [targetTodoIndex]: [
-                  ...existingTools,
-                  toolCall,
-                ],
-              };
+            if (toolData.name !== 'TodoWrite') {
+              const activityStatus =
+                toolData.state === 'error'
+                  ? 'error'
+                  : toolData.state === 'output-available'
+                    ? 'completed'
+                    : 'running';
+              newState.activityFeed = upsertActivityItem(newState.activityFeed, {
+                id: `tool-${toolData.id}`,
+                kind: 'tool',
+                timestamp: new Date(update.timestamp || Date.now()),
+                label: toolData.name,
+                detail: getToolResourceLabel(toolCall),
+                status: activityStatus,
+                toolName: toolData.name,
+                toolId: toolData.id,
+                todoIndex: toolData.todoIndex,
+              });
             }
             break;
         }

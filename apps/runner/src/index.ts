@@ -1742,6 +1742,8 @@ export async function startRunner(options: RunnerOptions = {}) {
     'tunnel-closed',
     'port-conflict',
     'process-exited',
+    'preview-failed',
+    'status',
     'error',
     'ack',
   ];
@@ -1772,6 +1774,10 @@ export async function startRunner(options: RunnerOptions = {}) {
           if (event.stack) {
             log(`Stack: ${event.stack.substring(0, 500)}`);
           }
+        } else if (event.type === "preview-failed") {
+          log(`⚠️ Preview failed: ${event.error}`);
+        } else if (event.type === "status") {
+          log(`ℹ️ ${event.message}`);
         } else if (event.type === "port-detected") {
           log(`🔌 Port detected: ${event.port}`);
         } else if (event.type === "tunnel-created") {
@@ -1920,6 +1926,12 @@ export async function startRunner(options: RunnerOptions = {}) {
           if (executionMode === 'sandbox') {
             const sandboxPort = preferredPort ?? 3000;
             log(`📦 Sandbox mode: syncing workspace to backend sandbox (project ${command.projectId}, port ${sandboxPort})...`);
+            sendEvent({
+              type: "status",
+              ...buildEventBase(command.projectId, command.id),
+              message: "Provisioning sandbox preview…",
+              phase: "sandbox-sync",
+            });
             try {
               const { syncToSandbox } = await import('./lib/sandbox-sync.js');
               const { previewUrl } = await syncToSandbox({
@@ -1937,14 +1949,23 @@ export async function startRunner(options: RunnerOptions = {}) {
                 port: sandboxPort,
                 tunnelUrl: previewUrl,
               });
+              sendEvent({
+                type: "status",
+                ...buildEventBase(command.projectId, command.id),
+                message: `Sandbox preview live`,
+                phase: "sandbox-ready",
+              });
             } catch (syncErr) {
               const message = syncErr instanceof Error ? syncErr.message : String(syncErr);
               log(`❌ Sandbox sync failed: ${message}`);
+              // Preview provision failed after a successful build. Do NOT emit a
+              // generic build "error" that the UI reads as "Build failed".
               sendEvent({
-                type: "error",
+                type: "preview-failed",
                 ...buildEventBase(command.projectId, command.id),
-                error: `Sandbox sync failed: ${message}`,
+                error: message,
                 stack: syncErr instanceof Error ? syncErr.stack : undefined,
+                phase: "sandbox-sync",
               });
             }
             break;

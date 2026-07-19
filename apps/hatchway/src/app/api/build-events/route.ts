@@ -501,19 +501,15 @@ export async function POST(request: Request) {
             set: { input: event.input ?? null, state: 'input-available', updatedAt: timestamp },
           });
 
-          // WebSocket: Broadcast tool-input-available for planning phase tools AND skill loads
-          // This enables the shimmer animation to show the active tool being used
-          // Execution phase tools (todoIndex >= 0) only broadcast on completion
-          // Exception: SkillLoad events always broadcast immediately so frontend can show skill loading state
-          if (todoIndex < 0 || event.toolName === 'SkillLoad') {
-            buildWebSocketServer.broadcastToolCall(projectId, sessionId, {
-              id: toolCallId,
-              name: event.toolName,
-              todoIndex,
-              input: event.input ?? undefined,
-              state: 'input-available',
-            });
-          }
+          // Broadcast tool starts immediately so the activity feed feels live.
+          // (Previously execution-phase tools only broadcast on completion.)
+          buildWebSocketServer.broadcastToolCall(projectId, sessionId, {
+            id: toolCallId,
+            name: event.toolName,
+            todoIndex,
+            input: event.input ?? undefined,
+            state: 'input-available',
+          });
         }
         break;
       }

@@ -1188,6 +1188,35 @@ class BuildWebSocketServer {
   }
 
   /**
+   * Broadcast a non-todo activity status line (sandbox provision, preview failure, etc.)
+   * When sessionId is empty, deliver to all clients subscribed to the project.
+   */
+  broadcastActivityStatus(
+    projectId: string,
+    sessionId: string,
+    payload: { message: string; phase?: string; level?: 'info' | 'success' | 'warning' | 'error' }
+  ) {
+    const key = sessionId ? `${projectId}-${sessionId}` : `${projectId}-activity`;
+
+    if (!this.pendingUpdates.has(key)) {
+      this.pendingUpdates.set(key, {
+        projectId,
+        sessionId: sessionId || '',
+        updates: [],
+      });
+    }
+
+    const batch = this.pendingUpdates.get(key)!;
+    batch.updates.push({
+      type: 'activity-status',
+      data: payload,
+      timestamp: Date.now(),
+    });
+
+    this.flushBatch(key);
+  }
+
+  /**
    * Process and send batched updates
    */
   private processBatchedUpdates() {
@@ -1205,10 +1234,11 @@ class BuildWebSocketServer {
 
     const { projectId, sessionId, updates } = batch;
 
-    // Find all clients subscribed to this project/session
+    // Find all clients subscribed to this project/session.
+    // Empty sessionId = project-wide broadcast (status / preview-failed).
     const subscribers = Array.from(this.clients.values()).filter(
       client => client.projectId === projectId &&
-                (!client.sessionId || client.sessionId === sessionId)
+                (!sessionId || !client.sessionId || client.sessionId === sessionId)
     );
 
     if (subscribers.length === 0) {

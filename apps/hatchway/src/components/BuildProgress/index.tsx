@@ -1,13 +1,14 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, CheckCircle2, ChevronDown, ChevronUp, Square } from 'lucide-react';
+import { Loader2, CheckCircle2, ChevronDown, ChevronUp, Square, AlertTriangle } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import type { GenerationState, TodoItem } from '@/types/generation';
+import type { GenerationState, TodoItem, ActivityItem, ToolCall } from '@/types/generation';
 import { BuildHeader } from './BuildHeader';
 import { TodoList } from './TodoList';
 import { PlanningPhase } from './PlanningPhase';
 import { PhaseSection } from './PhaseSection';
+import { ActivityFeed } from './ActivityFeed';
 
 interface BuildProgressProps {
   state: GenerationState;
@@ -23,14 +24,123 @@ interface BuildProgressProps {
   } | null;
 }
 
+function getToolResource(tool: ToolCall): string {
+  if (!tool.input) return '';
+  const input = tool.input as Record<string, unknown>;
+  if (typeof input.skillName === 'string') return input.skillName;
+  if (typeof input.file_path === 'string') {
+    const path = input.file_path;
+    const match = path.match(/hatchway-workspace\/[^/]+\/(.+)$/);
+    return match ? match[1] : path.split('/').slice(-2).join('/');
+  }
+  if (typeof input.path === 'string') {
+    const path = input.path;
+    const match = path.match(/hatchway-workspace\/[^/]+\/(.+)$/);
+    return match ? match[1] : path.split('/').slice(-2).join('/');
+  }
+  if (typeof input.command === 'string') {
+    return input.command.length > 80 ? `${input.command.slice(0, 80)}…` : input.command;
+  }
+  if (typeof input.query === 'string') {
+    return input.query.length > 80 ? `${input.query.slice(0, 80)}…` : input.query;
+  }
+  if (typeof input.pattern === 'string') return input.pattern;
+  return '';
+}
+
+/** Reconstruct a chronological feed when live activityFeed is empty (reconnect / history). */
+function deriveActivityFeed(state: GenerationState): ActivityItem[] {
+  if (state.activityFeed && state.activityFeed.length > 0) {
+    return state.activityFeed;
+  }
+
+  const items: ActivityItem[] = [];
+
+  for (const tool of state.planningTools || []) {
+    if (tool.name === 'TodoWrite') continue;
+    items.push({
+      id: `tool-${tool.id}`,
+      kind: 'tool',
+      timestamp: tool.startTime || state.startTime,
+      label: tool.name,
+      detail: getToolResource(tool),
+      status:
+        tool.state === 'error'
+          ? 'error'
+          : tool.state === 'output-available'
+            ? 'completed'
+            : 'running',
+      toolName: tool.name,
+      toolId: tool.id,
+      todoIndex: -1,
+    });
+  }
+
+  (state.todos || []).forEach((todo, index) => {
+    if (todo.status === 'pending') return;
+    items.push({
+      id: `todo-derived-${index}`,
+      kind: 'todo',
+      timestamp: state.startTime,
+      label: todo.status === 'in_progress' ? todo.activeForm : todo.content,
+      status: todo.status === 'completed' ? 'completed' : 'running',
+      todoIndex: index,
+    });
+
+    for (const tool of state.toolsByTodo?.[index] || []) {
+      if (tool.name === 'TodoWrite') continue;
+      items.push({
+        id: `tool-${tool.id}`,
+        kind: 'tool',
+        timestamp: tool.startTime || state.startTime,
+        label: tool.name,
+        detail: getToolResource(tool),
+        status:
+          tool.state === 'error'
+            ? 'error'
+            : tool.state === 'output-available'
+              ? 'completed'
+              : 'running',
+        toolName: tool.name,
+        toolId: tool.id,
+        todoIndex: index,
+      });
+    }
+  });
+
+  if (state.buildSummary) {
+    items.push({
+      id: 'text-summary-derived',
+      kind: 'text',
+      timestamp: state.endTime || new Date(),
+      label: state.buildSummary.slice(0, 200),
+      status: 'info',
+    });
+  }
+
+  if (state.previewError) {
+    items.push({
+      id: 'status-preview-error-derived',
+      kind: 'status',
+      timestamp: state.endTime || new Date(),
+      label: state.previewError,
+      status: 'error',
+    });
+  }
+
+  return items;
+}
+
 // Build Complete Summary component - shows collapsed todos
 function BuildCompleteSummary({
   todos,
   buildSummary,
+  previewError,
   onExpand,
 }: {
   todos: TodoItem[];
   buildSummary?: string;
+  previewError?: string;
   onExpand: () => void;
 }) {
   const [showTodos, setShowTodos] = useState(false);
@@ -50,18 +160,27 @@ function BuildCompleteSummary({
           </p>
         )}
 
+        {previewError && (
+          <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200">
+            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+            <span>{previewError}</span>
+          </div>
+        )}
+
         {/* Collapsible todos section */}
-        <button
-          onClick={() => setShowTodos(!showTodos)}
-          className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {showTodos ? (
-            <ChevronUp className="w-3 h-3" />
-          ) : (
-            <ChevronDown className="w-3 h-3" />
-          )}
-          <span>{todos.length} tasks completed</span>
-        </button>
+        {todos.length > 0 && (
+          <button
+            onClick={() => setShowTodos(!showTodos)}
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showTodos ? (
+              <ChevronUp className="w-3 h-3" />
+            ) : (
+              <ChevronDown className="w-3 h-3" />
+            )}
+            <span>{todos.length} tasks completed</span>
+          </button>
+        )}
 
         <AnimatePresence>
           {showTodos && (
@@ -82,6 +201,13 @@ function BuildCompleteSummary({
             </motion.div>
           )}
         </AnimatePresence>
+
+        <button
+          onClick={onExpand}
+          className="mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Show activity
+        </button>
       </div>
     </div>
   );
@@ -97,8 +223,8 @@ export default function BuildProgress({
 }: BuildProgressProps) {
   // ALWAYS call hooks first (React rules!)
   const [isCardExpanded, setIsCardExpanded] = useState(!defaultCollapsed);
+  const [showTodoFallback, setShowTodoFallback] = useState(false);
   const todoListRef = useRef<HTMLDivElement>(null);
-  const activeTodoRef = useRef<HTMLDivElement>(null);
 
   // Calculate totals across both phases
   // Note: templateTodos and currentPhase are new fields added to GenerationState
@@ -113,8 +239,11 @@ export default function BuildProgress({
   const buildCompleted = buildTodos.filter((t) => t.status === 'completed').length;
   const completed = templateCompleted + buildCompleted;
   const total = templateTodos.length + buildTodos.length;
-  const progress = total > 0 ? (completed / total) * 100 : 0;
-  const isComplete = progress === 100 && !state?.isActive;
+  const activityItems = useMemo(() => (state ? deriveActivityFeed(state) : []), [state]);
+  const hasActivity = activityItems.length > 0;
+  // Progress prefers todos when present; otherwise activity-based indeterminate progress while active
+  const progress = total > 0 ? (completed / total) * 100 : state?.isActive ? 15 : hasActivity ? 100 : 0;
+  const isComplete = Boolean(state && !state.isActive && (total === 0 ? hasActivity || !!state.buildSummary : completed === total));
   
   // Determine phase states
   const templatePhaseComplete = templateTodos.length > 0 && templateTodos.every((t) => t.status === 'completed');
@@ -126,20 +255,14 @@ export default function BuildProgress({
   useEffect(() => {
     console.log('🔍 BuildProgress state update:', {
       todosLength: state?.todos?.length || 0,
+      activityLength: activityItems.length,
       isActive: state?.isActive,
       activeTodoIndex: state?.activeTodoIndex,
       agentId: state?.agentId,
       claudeModelId: state?.claudeModelId,
       projectName: state?.projectName,
     });
-
-    if (state?.toolsByTodo) {
-      const toolCounts = Object.keys(state.toolsByTodo)
-        .map((idx) => `todo${idx}: ${state.toolsByTodo[Number(idx)]?.length || 0} tools`)
-        .join(', ');
-      console.log('   📊 toolsByTodo:', toolCounts || 'empty');
-    }
-  }, [state]);
+  }, [state, activityItems.length]);
 
   // Auto-collapse card when build completes (only if not defaultCollapsed)
   useEffect(() => {
@@ -149,11 +272,10 @@ export default function BuildProgress({
     }
   }, [isComplete, defaultCollapsed]);
 
-  // Auto-scroll to active todo when it changes
+  // Auto-scroll to active todo when it changes (todo fallback view)
   useEffect(() => {
-    if (!state?.isActive || state.activeTodoIndex < 0) return;
+    if (!state?.isActive || state.activeTodoIndex < 0 || !showTodoFallback) return;
 
-    // Small delay to let the DOM update
     const timer = setTimeout(() => {
       const activeElement = document.querySelector(`[data-todo-index="${state.activeTodoIndex}"]`);
       if (activeElement && todoListRef.current) {
@@ -162,22 +284,18 @@ export default function BuildProgress({
           block: 'nearest',
           inline: 'nearest',
         });
-        console.log(`📜 Auto-scrolled to active todo: ${state.activeTodoIndex}`);
       }
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [state?.activeTodoIndex, state?.isActive]);
+  }, [state?.activeTodoIndex, state?.isActive, showTodoFallback]);
 
-  // Removed auto-switch logic - ONLY todo view now!
-
-  // ALL useMemo/useCallback MUST be before early returns
   const allTodosCompleted = useMemo(() => {
-    return state.todos?.length ? state.todos.every((todo) => todo.status === 'completed') : false;
-  }, [state.todos]);
+    return state?.todos?.length ? state.todos.every((todo) => todo.status === 'completed') : false;
+  }, [state?.todos]);
 
   // Validate state AFTER ALL hooks
-  if (!state || !state.todos || !Array.isArray(state.todos)) {
+  if (!state) {
     console.error('⚠️ Invalid generation state:', state);
     return (
       <div className="p-4 border border-red-500/30 rounded-lg bg-red-500/10">
@@ -194,8 +312,8 @@ export default function BuildProgress({
     );
   }
 
-  // Show planning phase ONLY if no todos yet (Claude is exploring/planning)
-  if (total === 0 && state.isActive) {
+  // Early planning shimmer only when we have no activity yet
+  if (!hasActivity && total === 0 && state.isActive) {
     return (
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -206,6 +324,27 @@ export default function BuildProgress({
           activePlanningTool={state.activePlanningTool}
           projectName={state.projectName}
         />
+        {onCancel && (
+          <div className="mt-4">
+            <button
+              onClick={onCancel}
+              disabled={isCancelling}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-red-400 transition-colors rounded-lg border border-white/10 hover:border-red-500/30 hover:bg-red-500/5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isCancelling ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Cancelling...</span>
+                </>
+              ) : (
+                <>
+                  <Square className="w-4 h-4" />
+                  <span>Stop Build</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </motion.div>
     );
   }
@@ -221,8 +360,8 @@ export default function BuildProgress({
         projectName={state.projectName}
         agentId={state.agentId}
         claudeModelId={state.claudeModelId}
-        completed={completed}
-        total={total}
+        completed={total > 0 ? completed : Math.min(activityItems.length, 1)}
+        total={total > 0 ? total : Math.max(activityItems.length, 1)}
         progress={progress}
         isComplete={isComplete}
         isActive={state.isActive}
@@ -235,12 +374,25 @@ export default function BuildProgress({
       {/* Content - Only show when expanded */}
       {isCardExpanded && (
         <>
-          {total > 0 ? (
+          <div className="flex items-center justify-between px-4 pt-2">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">
+              {showTodoFallback ? 'Tasks' : 'Activity'}
+            </p>
+            {total > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowTodoFallback((v) => !v)}
+                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showTodoFallback ? 'Show activity' : 'Show tasks'}
+              </button>
+            )}
+          </div>
+
+          {showTodoFallback && total > 0 ? (
             <div ref={todoListRef}>
-              {/* Two-phase display when template todos exist */}
               {templateTodos.length > 0 ? (
                 <>
-                  {/* Phase 1: Template Configuration */}
                   <PhaseSection
                     phase="template"
                     title="Template Setup"
@@ -249,8 +401,6 @@ export default function BuildProgress({
                     isActive={templatePhaseActive}
                     isComplete={templatePhaseComplete}
                   />
-                  
-                  {/* Phase 2: Application Build */}
                   {buildTodos.length > 0 && (
                     <PhaseSection
                       phase="build"
@@ -263,41 +413,49 @@ export default function BuildProgress({
                   )}
                 </>
               ) : (
-                /* Legacy single-phase display (no template phase) */
                 <TodoList
-                  todos={state.todos}
-                  toolsByTodo={state.toolsByTodo}
+                  todos={state.todos || []}
+                  toolsByTodo={state.toolsByTodo || {}}
                   activeTodoIndex={state.activeTodoIndex}
                   allTodosCompleted={allTodosCompleted}
                 />
               )}
-              
-              {/* Stop Build button - below the task list */}
-              {state.isActive && onCancel && (
-                <div className="px-4 pb-4">
-                  <button
-                    onClick={onCancel}
-                    disabled={isCancelling}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-red-400 transition-colors rounded-lg border border-white/10 hover:border-red-500/30 hover:bg-red-500/5 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isCancelling ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Cancelling...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Square className="w-4 h-4" />
-                        <span>Stop Build</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
             </div>
           ) : (
-            <div className="p-6 text-center text-gray-400 text-sm">
-              {state.isActive ? 'Initializing build...' : 'No tasks to display'}
+            <ActivityFeed
+              items={activityItems}
+              isActive={state.isActive}
+              emptyLabel={state.isActive ? 'Starting agent…' : 'No activity recorded'}
+            />
+          )}
+
+          {state.previewError && (
+            <div className="mx-4 mb-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200">
+              <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+              <span>{state.previewError}</span>
+            </div>
+          )}
+              
+          {/* Stop Build button - below the activity feed */}
+          {state.isActive && onCancel && (
+            <div className="px-4 pb-4">
+              <button
+                onClick={onCancel}
+                disabled={isCancelling}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-red-400 transition-colors rounded-lg border border-white/10 hover:border-red-500/30 hover:bg-red-500/5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCancelling ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Cancelling...</span>
+                  </>
+                ) : (
+                  <>
+                    <Square className="w-4 h-4" />
+                    <span>Stop Build</span>
+                  </>
+                )}
+              </button>
             </div>
           )}
         </>
@@ -306,8 +464,9 @@ export default function BuildProgress({
       {/* Build Complete Summary - show collapsed todos when build is done */}
       {isComplete && !isCardExpanded && (
         <BuildCompleteSummary
-          todos={state.todos}
+          todos={state.todos || []}
           buildSummary={state.buildSummary}
+          previewError={state.previewError}
           onExpand={() => setIsCardExpanded(true)}
         />
       )}

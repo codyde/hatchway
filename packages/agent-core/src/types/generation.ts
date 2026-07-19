@@ -25,6 +25,23 @@ export interface TextMessage {
   timestamp: Date;
 }
 
+/** Chronological activity line for the TUI-like build feed. */
+export type ActivityItemKind = 'tool' | 'text' | 'status' | 'todo';
+
+export interface ActivityItem {
+  id: string;
+  kind: ActivityItemKind;
+  timestamp: Date;
+  /** Short primary label (tool name, status message, note preview). */
+  label: string;
+  /** Secondary detail (file path, command, phase). */
+  detail?: string;
+  status?: 'running' | 'completed' | 'error' | 'info' | 'warning' | 'success';
+  toolName?: string;
+  toolId?: string;
+  todoIndex?: number;
+}
+
 export type BuildOperationType =
   | 'initial-build'
   | 'enhancement'
@@ -127,6 +144,9 @@ export interface GenerationState {
   currentPhase?: BuildPhase; // Current active phase
   templateTodos?: TodoItem[]; // Phase 1: Template configuration tasks
   activeTemplateTodoIndex?: number; // Active todo index for template phase
+  // TUI-like chronological activity feed (tools, notes, status)
+  activityFeed?: ActivityItem[];
+  previewError?: string; // Sandbox/preview provision error (build itself may have succeeded)
 }
 
 export type GenerationEvent =

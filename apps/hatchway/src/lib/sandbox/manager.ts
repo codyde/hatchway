@@ -179,7 +179,21 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
     // node_modules, so extracting over it only refreshes source.
     `mkdir -p ${WORKSPACE}`,
     `find ${WORKSPACE} -mindepth 1 -maxdepth 1 ! -name node_modules -exec rm -rf {} + 2>/dev/null || true`,
-    `base64 -d /tmp/workspace.tgz.b64 | tar xz -C ${WORKSPACE}`,
+    // macOS-created tarballs may still carry unknown pax/xattr headers
+    // (LIBARCHIVE.xattr.*). GNU tar treats some as fatal; ignore them.
+    `base64 -d /tmp/workspace.tgz.b64 | tar xz --no-same-owner --warning=no-unknown-keyword -C ${WORKSPACE} 2>/tmp/tar-extract.err || { ` +
+      `ec=$?; ` +
+      // Retry without --warning if the sandbox tar is busybox/old and rejects the flag.
+      `if grep -qiE 'unrecognized|invalid option|not supported|unknown option' /tmp/tar-extract.err 2>/dev/null; then ` +
+        `base64 -d /tmp/workspace.tgz.b64 | tar xz --no-same-owner -C ${WORKSPACE}; ` +
+      `else ` +
+        // If the only "errors" are unknown extended headers, treat as success when files landed.
+        `if [ "$ec" -ne 0 ] && grep -qE "Ignoring unknown extended header|LIBARCHIVE\\.xattr" /tmp/tar-extract.err 2>/dev/null && [ -n "$(ls -A ${WORKSPACE} 2>/dev/null)" ]; then ` +
+          `echo "[sandbox] tar reported xattr warnings but extract landed files; continuing"; ` +
+        `else ` +
+          `cat /tmp/tar-extract.err >&2; exit "$ec"; ` +
+        `fi; ` +
+      `fi; }`,
     'rm -f /tmp/workspace.tgz.b64',
     `cd ${WORKSPACE}`,
     installCommand,

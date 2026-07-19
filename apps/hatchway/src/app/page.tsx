@@ -3070,12 +3070,30 @@ function HomeContent() {
                               })()}
                             </div>
                           )}
+                          {/* Preview provision failure (build may have succeeded) */}
+                          {currentProject.devServerStatus === "failed" &&
+                            currentProject.status !== "failed" &&
+                            currentProject.errorMessage &&
+                            /preview failed|sandbox sync failed/i.test(currentProject.errorMessage) && (
+                            <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1">
+                                  <p className="text-xs font-medium text-amber-300">Preview Failed</p>
+                                  <p className="text-xs text-amber-200/80 mt-0.5">{currentProject.errorMessage}</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                           {/* Error message and retry button */}
                           {currentProject.status === "failed" && (
                             <div className="mt-2 p-2 bg-[#FF45A8]/10 border border-[#FF45A8]/30 rounded-lg">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1">
-                                  <p className="text-xs font-medium text-[#FF45A8]">Generation Failed</p>
+                                  <p className="text-xs font-medium text-[#FF45A8]">
+                                    {currentProject.errorMessage && /preview failed|sandbox sync failed/i.test(currentProject.errorMessage)
+                                      ? 'Preview Failed'
+                                      : 'Generation Failed'}
+                                  </p>
                                   {currentProject.errorMessage && (
                                     <p className="text-xs text-[#FF70BC]/80 mt-0.5">{currentProject.errorMessage}</p>
                                   )}
