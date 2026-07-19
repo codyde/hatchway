@@ -443,6 +443,36 @@ function isAbortLikeError(error: unknown): boolean {
   return String(error).toLowerCase().includes('abort');
 }
 
+/**
+ * Claude Agent SDK throws after exhausting maxTurns:
+ * "Claude Code returned an error result: Reached maximum number of turns (N)"
+ */
+function isMaxTurnsError(error: unknown): boolean {
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === 'string'
+      ? error
+      : String(error ?? '');
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('maximum number of turns') ||
+    lower.includes('error_max_turns') ||
+    (lower.includes('error result') && lower.includes('turns'))
+  );
+}
+
+function hasLandedImplementationWork(options: {
+  implementedViaTools: boolean;
+  filesModified: number;
+  completedTodos: number;
+}): boolean {
+  return (
+    options.implementedViaTools ||
+    options.filesModified > 0 ||
+    options.completedTodos > 0
+  );
+}
+
 function createBuildMetrics(
   context: BuildContext,
   status: 'completed' | 'failed',
@@ -2486,9 +2516,10 @@ export async function startRunner(options: RunnerOptions = {}) {
         fileLog.info("Template:", command.payload?.template);
 
         // Early-stop is intentional success (todos done after implementation).
-        // Hoisted so abort/cancel errors can still complete the build cleanly.
+        // Hoisted so abort/cancel/max-turns errors can still complete the build cleanly.
         let earlyStopTriggered = false;
         let earlyStopReason: string | undefined;
+        let maxTurnsReached = false;
         const filesModified = new Set<string>();
         const completedTodos: string[] = [];
         let latestTodos: TrackedTodo[] = [];
@@ -2810,6 +2841,28 @@ export async function startRunner(options: RunnerOptions = {}) {
                 const metrics = extractAgentBuildMetrics(msg);
                 if (timingContext && metrics) {
                   timingContext.agentMetrics = metrics;
+                }
+
+                const subtype = typeof msg.subtype === 'string' ? msg.subtype : '';
+                const resultText = typeof msg.result === 'string' ? msg.result : '';
+                if (
+                  subtype === 'error_max_turns' ||
+                  isMaxTurnsError(resultText) ||
+                  isMaxTurnsError(subtype)
+                ) {
+                  maxTurnsReached = true;
+                  buildLog(` ⚠️  Max turns reached (${metrics?.numTurns ?? '?'})`);
+                  // Soft-complete if real work landed; otherwise let the SDK exit
+                  // error (if any) fall through as a normal failure.
+                  if (
+                    hasLandedImplementationWork({
+                      implementedViaTools,
+                      filesModified: filesModified.size,
+                      completedTodos: completedTodos.length,
+                    })
+                  ) {
+                    await requestEarlyStop('max_turns_with_work');
+                  }
                 }
               }
 
@@ -3268,16 +3321,29 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
           }
           activeBuildContexts.delete(command.id);
         } catch (error) {
-          // Intentional early-stop aborts the SDK/stream. Treat that as success
-          // if we already implemented work; otherwise keep the real failure path.
+          // Intentional early-stop aborts, or max-turns after real work landed.
+          // Treat those as success so the UI doesn't show a false failure.
+          const workLanded = hasLandedImplementationWork({
+            implementedViaTools,
+            filesModified: filesModified.size,
+            completedTodos: completedTodos.length,
+          });
+          const maxTurnsSoftComplete =
+            (maxTurnsReached || isMaxTurnsError(error)) && workLanded;
           const abortLooksIntentional =
             earlyStopTriggered ||
-            (isAbortLikeError(error) && (implementedViaTools || completedTodos.length > 0 || filesModified.size > 0));
+            maxTurnsSoftComplete ||
+            (isAbortLikeError(error) && workLanded);
 
           if (abortLooksIntentional) {
             earlyStopTriggered = true;
-            earlyStopReason ??= 'todos_completed_after_implementation';
-            buildLog(` ⏹️  Treating abort as successful early stop (${earlyStopReason})`);
+            if (maxTurnsSoftComplete) {
+              earlyStopReason = 'max_turns_with_work';
+              buildLog(` ⏹️  Treating max-turns as successful soft-complete (${earlyStopReason})`);
+            } else {
+              earlyStopReason ??= 'todos_completed_after_implementation';
+              buildLog(` ⏹️  Treating abort as successful early stop (${earlyStopReason})`);
+            }
 
             const completedBuildContext = activeBuildContexts.get(command.id);
             const earlyStopDirectory = completedBuildContext?.projectDirectory;
@@ -3373,7 +3439,15 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
               failedContext,
               'failed',
               failedAt,
-              { error: errorMessage },
+              {
+                error: errorMessage,
+                modifiedFileCount: filesModified.size,
+                completedTodoCount: completedTodos.length,
+                earlyStop: maxTurnsReached || earlyStopTriggered,
+                earlyStopReason: maxTurnsReached
+                  ? 'max_turns_without_work'
+                  : earlyStopReason,
+              },
             );
 
             buildLog(`[timing] ${JSON.stringify(buildMetrics)}`);
