@@ -52,16 +52,27 @@ async function main() {
   try {
     // Railway's base image ships Node via mise. The sandbox is the RUN target,
     // so it needs: railgate (preview tunnel), tmux (keep the dev server + tunnel
-    // alive across exec sessions), and pnpm (most templates). No @hatchway/cli —
-    // the runner + Claude Code run on the user's machine.
-    await step(sb, 'Install tmux', `apt-get update -qq && apt-get install -y -qq tmux`, 600);
+    // alive across exec sessions), pnpm (most templates), and a native build
+    // toolchain for modules like better-sqlite3 that rebuild via node-gyp.
+    // No @hatchway/cli — the runner + Claude Code run on the user's machine.
+    await step(
+      sb,
+      'Install tmux + native build toolchain',
+      `apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tmux build-essential python3 python3-pip pkg-config`,
+      600,
+    );
     await step(
       sb,
       `Install ${railgatePackage} + pnpm`,
       `npm i -g ${railgatePackage} && (corepack enable || npm i -g pnpm)`,
       600,
     );
-    await step(sb, 'Verify tools', `node --version && railgate --version && tmux -V && pnpm --version`, 60);
+    await step(
+      sb,
+      'Verify tools',
+      `node --version && railgate --version && tmux -V && pnpm --version && g++ --version | head -1 && make --version | head -1 && python3 --version`,
+      60,
+    );
 
     console.log(`\nCheckpointing as "${checkpointName}"...`);
     const cp = await sb.checkpoint(checkpointName);

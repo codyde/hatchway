@@ -200,6 +200,13 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
       `fi; }`,
     'rm -f /tmp/workspace.tgz.b64',
     `cd ${WORKSPACE}`,
+    // Native modules (better-sqlite3, sharp, etc.) need a compiler toolchain when
+    // prebuilds are missing for the sandbox Node ABI. Bake installs these once;
+    // this is a cheap no-op if already present, and covers fresh/unbaked boxes.
+    'if ! command -v g++ >/dev/null 2>&1 || ! command -v make >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then ' +
+      'echo "[sandbox] installing native build toolchain (python3/make/g++)"; ' +
+      'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential python3 python3-pip pkg-config; ' +
+    'fi',
     // Template .npmrc may contain pnpm-only keys (enable-modules-dir, shamefully-hoist).
     // npm treats unknown project config as hard errors on newer versions, so strip those
     // keys before install when using npm. Keep the file for pnpm/yarn installs.
@@ -209,8 +216,11 @@ export async function syncAndRun(project: SandboxProject, options: SyncAndRunOpt
         `mv .npmrc.hatchway .npmrc; ` +
       `fi; ` +
     `fi`,
+    // Prefer prebuilt binaries when available; fall back to node-gyp with toolchain above.
+    'export npm_config_build_from_source=false',
+    'export npm_config_python=python3',
     // Surface install failures with a log tail rather than only npm warning noise.
-    `{ ${installCommand}; } > /tmp/sandbox-install.log 2>&1 || { echo "[sandbox] install failed: ${installCommand}"; tail -n 80 /tmp/sandbox-install.log; exit 1; }`,
+    `{ ${installCommand}; } > /tmp/sandbox-install.log 2>&1 || { echo "[sandbox] install failed: ${installCommand}"; tail -n 120 /tmp/sandbox-install.log; exit 1; }`,
     'tail -n 20 /tmp/sandbox-install.log 2>/dev/null || true',
     // Restart only the dev server with the freshly-synced code.
     'tmux kill-session -t dev 2>/dev/null || true',

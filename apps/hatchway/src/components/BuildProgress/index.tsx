@@ -76,6 +76,24 @@ function deriveActivityFeed(state: GenerationState): ActivityItem[] {
     });
   }
 
+  // Narrative text keyed by todo index (including 0 before todos exist)
+  const textEntries = Object.entries(state.textByTodo || {})
+    .flatMap(([idx, texts]) =>
+      (texts || []).map((text) => ({ index: Number(idx), text }))
+    )
+    .filter((entry) => entry.text?.text?.trim());
+
+  for (const { index, text } of textEntries) {
+    items.push({
+      id: `text-derived-${text.id}`,
+      kind: 'text',
+      timestamp: text.timestamp || state.startTime,
+      label: text.text,
+      status: 'info',
+      todoIndex: Number.isFinite(index) ? index : 0,
+    });
+  }
+
   (state.todos || []).forEach((todo, index) => {
     if (todo.status === 'pending') return;
     items.push({
@@ -376,7 +394,7 @@ export default function BuildProgress({
         <>
           <div className="flex items-center justify-between px-4 pt-2">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">
-              {showTodoFallback ? 'Tasks' : 'Activity'}
+              {showTodoFallback ? 'Tasks' : 'Chat'}
             </p>
             {total > 0 && (
               <button
@@ -384,7 +402,7 @@ export default function BuildProgress({
                 onClick={() => setShowTodoFallback((v) => !v)}
                 className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
               >
-                {showTodoFallback ? 'Show activity' : 'Show tasks'}
+                {showTodoFallback ? 'Show chat' : 'Show tasks'}
               </button>
             )}
           </div>
@@ -426,6 +444,15 @@ export default function BuildProgress({
               items={activityItems}
               isActive={state.isActive}
               emptyLabel={state.isActive ? 'Starting agent…' : 'No activity recorded'}
+              agentLabel={
+                state.agentId === 'openai-codex'
+                  ? 'Codex'
+                  : state.agentId === 'opencode'
+                    ? 'OpenCode'
+                    : state.agentId === 'factory-droid'
+                      ? 'Droid'
+                      : 'Claude'
+              }
             />
           )}
 

@@ -2,13 +2,15 @@
 
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, Circle, Loader2, AlertTriangle, Info, MessageSquare } from 'lucide-react';
+import { CheckCircle2, Circle, Loader2, AlertTriangle, Info } from 'lucide-react';
 import type { ActivityItem } from '@/types/generation';
 
 interface ActivityFeedProps {
   items: ActivityItem[];
   isActive?: boolean;
   emptyLabel?: string;
+  /** Prefer chat-style Claude lines; tools stay secondary. */
+  agentLabel?: string;
 }
 
 function formatTime(ts: Date | string | number | undefined): string {
@@ -31,26 +33,17 @@ function StatusIcon({ item }: { item: ActivityItem }) {
   if (item.status === 'warning') {
     return <AlertTriangle className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" />;
   }
-  if (item.kind === 'text') {
-    return <MessageSquare className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />;
-  }
   if (item.kind === 'status') {
     return <Info className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />;
   }
   return <Circle className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />;
 }
 
-function kindPrefix(item: ActivityItem): string {
-  if (item.kind === 'tool') return '›';
-  if (item.kind === 'todo') return '•';
-  if (item.kind === 'text') return '·';
-  return '·';
-}
-
 export function ActivityFeed({
   items,
   isActive = false,
   emptyLabel = 'Waiting for agent activity…',
+  agentLabel = 'Claude',
 }: ActivityFeedProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
@@ -70,7 +63,7 @@ export function ActivityFeed({
     const el = scrollerRef.current;
     if (!el || !stickToBottomRef.current) return;
     el.scrollTop = el.scrollHeight;
-  }, [items.length, items[items.length - 1]?.id, items[items.length - 1]?.status]);
+  }, [items.length, items[items.length - 1]?.id, items[items.length - 1]?.label, items[items.length - 1]?.status]);
 
   if (!items.length) {
     return (
@@ -84,18 +77,43 @@ export function ActivityFeed({
   return (
     <div
       ref={scrollerRef}
-      className="max-h-[360px] overflow-y-auto px-3 py-2 font-mono text-xs leading-relaxed"
+      className="max-h-[420px] overflow-y-auto px-3 py-3 space-y-1.5"
     >
       <AnimatePresence initial={false}>
         {items.map((item) => {
+          if (item.kind === 'text') {
+            return (
+              <motion.div
+                key={item.id}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-lg px-2.5 py-2 bg-theme-primary/5 border border-theme-primary/10"
+              >
+                <div className="flex items-baseline justify-between gap-2 mb-1">
+                  <span className="text-[11px] font-semibold tracking-wide text-theme-primary">
+                    {agentLabel}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/50 tabular-nums">
+                    {formatTime(item.timestamp)}
+                  </span>
+                </div>
+                <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap break-words">
+                  {item.label}
+                </p>
+              </motion.div>
+            );
+          }
+
           const isError = item.status === 'error';
           const isRunning = item.status === 'running';
+          const isTool = item.kind === 'tool';
+
           return (
             <motion.div
               key={item.id}
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`flex items-start gap-2 py-1 px-1 rounded ${
+              className={`flex items-start gap-2 py-1 px-1.5 rounded font-mono text-[11px] leading-relaxed ${
                 isError
                   ? 'bg-red-500/5 text-red-300'
                   : isRunning
@@ -103,36 +121,33 @@ export function ActivityFeed({
                     : 'text-muted-foreground'
               }`}
             >
-              <span className="text-muted-foreground/70 w-3 flex-shrink-0 pt-0.5">
-                {kindPrefix(item)}
-              </span>
               <StatusIcon item={item} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2 min-w-0">
                   <span
                     className={`truncate ${
-                      item.kind === 'tool'
+                      isTool
                         ? isRunning
-                          ? 'shimmer-text text-foreground'
-                          : 'text-foreground/90'
+                          ? 'shimmer-text text-foreground/80'
+                          : 'text-foreground/70'
                         : item.kind === 'todo'
-                          ? 'text-foreground font-medium'
+                          ? 'text-foreground/90 font-medium'
                           : isError
                             ? 'text-red-300'
-                            : 'text-foreground/80'
+                            : 'text-foreground/70'
                     }`}
                   >
-                    {item.label}
+                    {isTool ? `› ${item.label}` : item.label}
                   </span>
                   {item.detail && item.kind !== 'status' && (
-                    <span className="truncate text-muted-foreground/80">{item.detail}</span>
+                    <span className="truncate text-muted-foreground/70">{item.detail}</span>
                   )}
                 </div>
                 {item.kind === 'status' && item.detail && (
                   <div className="text-[10px] text-muted-foreground/70 mt-0.5">{item.detail}</div>
                 )}
               </div>
-              <span className="text-[10px] text-muted-foreground/50 flex-shrink-0 tabular-nums pt-0.5">
+              <span className="text-[10px] text-muted-foreground/40 flex-shrink-0 tabular-nums pt-0.5">
                 {formatTime(item.timestamp)}
               </span>
             </motion.div>
@@ -140,10 +155,9 @@ export function ActivityFeed({
         })}
       </AnimatePresence>
       {isActive && (
-        <div className="flex items-center gap-2 py-1.5 px-1 text-muted-foreground">
-          <span className="w-3" />
+        <div className="flex items-center gap-2 py-1.5 px-1.5 text-muted-foreground font-mono text-[11px]">
           <Loader2 className="h-3.5 w-3.5 animate-spin text-theme-primary" />
-          <span className="shimmer-text">working…</span>
+          <span className="shimmer-text">{agentLabel} is working…</span>
         </div>
       )}
     </div>
